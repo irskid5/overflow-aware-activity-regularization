@@ -21,8 +21,8 @@ dense_kernel_initializer = tf.keras.initializers.VarianceScaling(
 
 
 def get_model(options, layer_options):
-    input = tf.keras.layers.Input(shape=(
-        28, 28, 1)) if not options["enlarge"] else tf.keras.layers.Input(shape=(128, 128, 1))
+    input = tf.keras.layers.Input(
+        shape=(28, 28, 1) if not options["enlarge"] else (128, 128, 1))
 
     # Ternarize inputs (if step 3)
     input = tf.keras.layers.Lambda(
@@ -33,8 +33,8 @@ def get_model(options, layer_options):
         name="TERNARIZE_WITH_THRESHOLD"
     )(input) if layer_options["INPUT"]["ternarize"] else tf.keras.layers.Lambda(lambda x: x, name="NOOP")(input)
 
-    input = tf.keras.layers.Reshape(target_shape=(28, 28))(
-        input) if not options["enlarge"] else tf.keras.layers.Reshape(target_shape=(128, 128))(input)
+    input = tf.keras.layers.Reshape(target_shape=(
+        28, 28) if not options["enlarge"] else (128, 128))(input)
 
     qrnn_0 = QRNNWithOAR(
         cell=None,

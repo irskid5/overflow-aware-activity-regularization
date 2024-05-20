@@ -244,8 +244,8 @@ class QSimpleRNNCellWithOAR(QSimpleRNNCell):
                 initializer="zeros",
                 trainable=False
             )
-            self.kernel_qmae = tf.keras.metrics.Mean(
-                name='qmae'+"/"+self.kernel.name)  # MAE
+            # self.kernel_qmae = tf.keras.metrics.Mean(
+            #     name='qmae'+"/"+self.kernel.name)  # MAE
         if self.recurrent_quantizer:
             self.quantized_recurrent_kernel = self.add_weight(
                 name="quantized_recurrent_kernel",
@@ -254,8 +254,8 @@ class QSimpleRNNCellWithOAR(QSimpleRNNCell):
                 initializer="zeros",
                 trainable=False
             )
-            self.recurrent_kernel_qmae = tf.keras.metrics.Mean(
-                name='qmae'+"/"+self.recurrent_kernel.name)  # MAE
+            # self.recurrent_kernel_qmae = tf.keras.metrics.Mean(
+            #     name='qmae'+"/"+self.recurrent_kernel.name)  # MAE
 
         self.wx = self.add_weight(
             name="wx_abs",
@@ -287,8 +287,8 @@ class QSimpleRNNCellWithOAR(QSimpleRNNCell):
             quantized_kernel = self.kernel_quantizer_internal(self.kernel)
             # For debugging to see quantized kernel
             self.quantized_kernel.assign(quantized_kernel)
-            self.add_metric(self.kernel_qmae(tf.reduce_mean(
-                tf.abs(self.kernel-self.quantized_kernel))))
+            # self.add_metric(self.kernel_qmae(tf.reduce_mean(
+            #     tf.abs(self.kernel-self.quantized_kernel))))
         else:
             quantized_kernel = self.kernel
 
@@ -300,8 +300,8 @@ class QSimpleRNNCellWithOAR(QSimpleRNNCell):
                 self.recurrent_kernel)
             # For debugging to see quantized kernel
             self.quantized_recurrent_kernel.assign(quantized_recurrent)
-            self.add_metric(self.recurrent_kernel_qmae(tf.reduce_mean(
-                tf.abs(self.recurrent_kernel-self.quantized_recurrent_kernel))))
+            # self.add_metric(self.recurrent_kernel_qmae(tf.reduce_mean(
+            #     tf.abs(self.recurrent_kernel-self.quantized_recurrent_kernel))))
         else:
             quantized_recurrent = self.recurrent_kernel
 
@@ -390,8 +390,8 @@ class QDenseWithOAR(QDense):
                 initializer="zeros",
                 trainable=False
             )
-            self.kernel_qmae = tf.keras.metrics.Mean(
-                name='qmae'+"/"+self.kernel.name)  # MAE
+            # self.kernel_qmae = tf.keras.metrics.Mean(
+            #     name='qmae'+"/"+self.kernel.name)  # MAE
 
         self.wx = self.add_weight(
             name="wx_abs",
@@ -431,8 +431,8 @@ class QDenseWithOAR(QDense):
             quantized_kernel = self.kernel_quantizer_internal(self.kernel)
             # For debugging to see quantized kernel
             self.quantized_kernel.assign(quantized_kernel)
-            self.add_metric(self.kernel_qmae(tf.reduce_mean(
-                tf.abs(self.kernel-self.quantized_kernel))))
+            # self.add_metric(self.kernel_qmae(tf.reduce_mean(
+            #     tf.abs(self.kernel-self.quantized_kernel))))
 
         # Calculate Wx
         h = tf.keras.backend.dot(inputs, quantized_kernel)
@@ -867,20 +867,20 @@ class ModelWithGradInfo(tf.keras.models.Model):
         # output.update(reg_names_to_norms)
 
         # TOTAL GRADS
-        grad_norms_names = ["grad_norm/" +
-                            g.name for g in self.trainable_variables]
+        # grad_norms_names = ["grad_norm/" +
+        #                     g.name for g in self.trainable_variables]
         # grad_avgs_names = ["grad_avg/"+g.name for g in self.trainable_variables]
-        grad_squares = [tf.reduce_sum(tf.square(g)) for g in grads]
+        # grad_squares = [tf.reduce_sum(tf.square(g)) for g in grads]
         # grad_avgs = [tf.reduce_mean(g) for g in grads]
-        grad_norms = [tf.sqrt(g) for g in grad_squares]
+        # grad_norms = [tf.sqrt(g) for g in grad_squares]
 
-        global_grad_norm = tf.sqrt(tf.add_n(grad_squares))
-        names_to_norms = dict(zip(grad_norms_names, grad_norms))
+        # global_grad_norm = tf.sqrt(tf.add_n(grad_squares))
+        # names_to_norms = dict(zip(grad_norms_names, grad_norms))
         # names_to_avgs = dict(zip(grad_avgs_names, grad_avgs))
 
         # Update output dict
-        output["global_grad_norm"] = global_grad_norm
-        output.update(names_to_norms)
+        # output["global_grad_norm"] = global_grad_norm
+        # output.update(names_to_norms)
         # output.update(names_to_avgs)
 
         return output

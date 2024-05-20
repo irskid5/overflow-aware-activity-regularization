@@ -36,18 +36,19 @@ def configure_environment():
             for gpu in gpus:
                 tf.config.experimental.set_memory_growth(gpu, True)
             logical_gpus = tf.config.list_logical_devices('GPU')
-            print(len(gpus), "Physical GPU,", len(
+            print(len(gpus), "Physical GPUs,", len(
                 logical_gpus), "Logical GPUs")
         except RuntimeError as e:
             print(str(e))
 
-        device = gpus[0]
+        print(gpus)
+        device = gpus[0].name[17:]
         print('Running single gpu: {}'.format(device))
         strategy = tf.distribute.OneDeviceStrategy(
             device=device)
 
     else:
-        device = tf.config.list_physical_devices('CPU')[0]
+        device = tf.config.list_physical_devices('CPU')[0].name[17:]
         print('Running on CPU: {}'.format(device))
         strategy = tf.distribute.OneDeviceStrategy(
             device=device)
@@ -88,7 +89,7 @@ def get_datasets(batch_size: int = 512) -> tuple[tf.data.Dataset, tf.data.Datase
     if options["enlarge"]:
         ds_train = ds_train.map(resize, num_parallel_calls=autotune)
     ds_train = ds_train.cache()
-    ds_train = ds_train.shuffle()
+    ds_train = ds_train.shuffle(buffer_size=len(ds_train))
     ds_train = ds_train.map(augment, num_parallel_calls=autotune)
     ds_train = ds_train.batch(batch_size, drop_remainder=True)
     ds_train = ds_train.prefetch(autotune)
@@ -98,6 +99,7 @@ def get_datasets(batch_size: int = 512) -> tuple[tf.data.Dataset, tf.data.Datase
     if options["enlarge"]:
         ds_val = ds_val.map(resize, num_parallel_calls=autotune)
     ds_val = ds_val.cache()
+    ds_val = ds_val.batch(batch_size)
     ds_val = ds_val.prefetch(autotune)
 
     # Test dataset
@@ -105,13 +107,14 @@ def get_datasets(batch_size: int = 512) -> tuple[tf.data.Dataset, tf.data.Datase
     if options["enlarge"]:
         ds_test = ds_test.map(resize, num_parallel_calls=autotune)
     ds_test = ds_test.cache()
+    ds_test = ds_test.batch(batch_size)
     ds_test = ds_test.prefetch(autotune)
 
     return ds_train, ds_val, ds_test
 
 
 def train(pretrained_weights: str | None, options, layer_options) -> str:
-    strategy, _, _ = configure_environment()
+    strategy, _ = configure_environment()
 
     now = datetime.now()
     RUN_DIR = RUNS_DIR + \
@@ -173,7 +176,7 @@ def train(pretrained_weights: str | None, options, layer_options) -> str:
         try:
             model.fit(
                 ds_train,
-                epochs=1000,
+                epochs=options["epochs"],
                 validation_data=ds_val,
                 callbacks=[tb_callback, ckpt_callback, lr_callback],
                 verbose=1,
@@ -182,12 +185,16 @@ def train(pretrained_weights: str | None, options, layer_options) -> str:
             print(e)
 
     if test:
-        model.evaluate(
-            x=ds_test,
-            verbose=1,
-        )
+        print("\nRUNNING EVALUATION OVER TEST SET\n")
+        try:
+            model.evaluate(
+                ds_test,
+                verbose=1,
+            )
+        except Exception as e:
+            print(e)
 
-    return RUN_DIR
+    return RUN_DIR + CKPT_DIR
 
 
 def get_model_parameter_stats(pretrained_weights: str, options, layer_options):
@@ -211,16 +218,14 @@ def get_model_parameter_stats(pretrained_weights: str, options, layer_options):
             all_weights = tf.concat(
                 [tf.reshape(x, shape=[-1]) for x in layer.trainable_weights], axis=-1)
             mean_abs = tf.math.reduce_mean(tf.abs(all_weights))
-            print(layer.name)
             if (layer.name.find("QRNN_0") != -1):
-                tern_params["QRNN_0"] = mean_abs
+                tern_params["QRNN_0"] = mean_abs.numpy()
             if (layer.name.find("QRNN_1") != -1):
-                tern_params["QRNN_1"] = mean_abs
+                tern_params["QRNN_1"] = mean_abs.numpy()
             if (layer.name.find("DENSE_0") != -1):
-                tern_params["DENSE_0"] = mean_abs
+                tern_params["DENSE_0"] = mean_abs.numpy()
             if (layer.name.find("DENSE_OUT") != -1):
-                tern_params["DENSE_OUT"] = mean_abs
-
+                tern_params["DENSE_OUT"] = mean_abs.numpy()
     return tern_params
 
 
@@ -228,7 +233,8 @@ def get_model_parameter_stats(pretrained_weights: str, options, layer_options):
 pretrained_weights = None
 options = {
     "enlarge": False,
-    "learning_rate": 1e-4,
+    "epochs": 10,
+    "learning_rate": 5e-5,
     "batch_size": 512,
     "t": 1.5,
     "tᵢ": 0.7,
@@ -238,11 +244,11 @@ options = {
         "precision": 6,
     },
     "quantize": False
-
-
 }
 
 for step in range(1, 5):
+    print(f"\nRUNNING STEP {step}/4\n")
+
     # Change settings according to step number
     ternarize_inputs = False
     t = 1.0
@@ -266,6 +272,8 @@ for step in range(1, 5):
         oar = True
         tern_params = get_model_parameter_stats(
             pretrained_weights, options, layer_options)
+        print("\nTERNARIZATION PARAMETERS:")
+        print(tern_params)
 
         def activation(x): return mod_sign_with_tanh_deriv(
             x, num_bits=options["oar"]["precision"])
@@ -309,7 +317,7 @@ for step in range(1, 5):
             "activation": lambda x: tf.keras.activations.softmax(x),
             "oar": {
                 "use": True,
-                "lm": 0,
+                "lm": 0.0,
                 "precision": options["oar"]["precision"],
             },
             "s": 1.0,
@@ -317,34 +325,11 @@ for step in range(1, 5):
         }
     }
 
+    print("OPTIONS AND LAYER OPTIONS:")
+    print(options)
+    print(layer_options)
+
     pretrained_weights = train(pretrained_weights=pretrained_weights,
                                options=options, layer_options=layer_options)
-
-
-# lrs = [1, 1/2, 1/4, 1/8, 1/16, 1/32, 1/64, 1/128, 1/256, 1/512, 1/1024]
-# oar_lms = [0, 1/32, 1/16, 1/8, 1/4, 1/2, 1, 2, 4, 8, 16]
-
-# threads = []
-# for lr in lrs:
-#     for oar_lm in oar_lms:
-#         oar_lm_real = 0.001 * oar_lm
-
-#         options["oar"]["lm"] = oar_lm_real
-#         layer_options["QRNN_0"]["oar"]["lm"] = oar_lm_real
-#         layer_options["QRNN_1"]["oar"]["lm"] = oar_lm_real
-#         layer_options["DENSE_0"]["oar"]["lm"] = oar_lm_real
-#         layer_options["DENSE_OUT"]["oar"]["lm"] = oar_lm_real
-
-#         print("LR = %f, OAR_LM = %f" % (lr, oar_lm))
-#         thr = threading.Thread(target=run_one_train, args=(options, layer_options, 0.001*lr,))
-#         threads.append(thr)
-#         thr.start()
-
-#         time.sleep(30)
-#         # run_one_train(options, layer_options, 0.01*lr)
-#     for index, thread in enumerate(threads):
-#         print("Main    : before joining thread %d." % index)
-#         thread.join()
-#         print("Main    : thread %d done" % index)
 
 print("End!")

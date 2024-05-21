@@ -948,3 +948,56 @@ def custom_loader(model, checkpoint_path):
         # Load the value of the variable
         value = checkpoint.get_variable_value(var_name)
         var.assign(value)
+
+
+def get_default_layer_options_from_options(options):
+    """Get a default layer_options object given options."""
+    ternarize_inputs = False
+    t = 1.0
+    s = 1.0
+    activation = tf.keras.activations.tanh
+    oar = False
+    tern_params = {"QRNN_0": 0, "QRNN_1": 0, "DENSE_0": 0, "DENSE_OUT": 0}
+    return {
+        "INPUT": {"ternarize": ternarize_inputs},
+        "QRNN_0": {
+            "activation": activation,
+            "oar": {
+                "use": oar,
+                "lm": options["oar"]["lm"],
+                "precision": options["oar"]["precision"],
+            },
+            "s": s,
+            "τ": t * tern_params["QRNN_0"],
+        },
+        "QRNN_1": {
+            "activation": activation,
+            "oar": {
+                "use": oar,
+                "lm": options["oar"]["lm"],
+                "precision": options["oar"]["precision"],
+            },
+            "s": s,
+            "τ": t * tern_params["QRNN_1"],
+        },
+        "DENSE_0": {
+            "activation": activation,
+            "oar": {
+                "use": oar,
+                "lm": options["oar"]["lm"],
+                "precision": options["oar"]["precision"],
+            },
+            "s": 1.0,
+            "τ": t * tern_params["DENSE_0"],
+        },
+        "DENSE_OUT": {
+            "activation": lambda x: tf.keras.activations.softmax(x),
+            "oar": {
+                "use": True,
+                "lm": 0.0,
+                "precision": options["oar"]["precision"],
+            },
+            "s": 1.0,
+            "τ": t * tern_params["DENSE_OUT"],
+        },
+    }

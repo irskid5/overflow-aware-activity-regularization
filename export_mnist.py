@@ -16,31 +16,9 @@ Ternary Weight Networks (TWN).
 
 import os
 import tensorflow as tf
-import keras.backend as K
 import tensorflow_datasets as tfds
 import numpy as np
-
-# Load MNIST using tfds
-ds_test, ds_info = tfds.load(
-    "mnist",
-    split="test",
-    shuffle_files=False,
-    as_supervised=True,
-    with_info=True,
-)
-print("Loaded MNIST test set as supervised")
-
-
-def ternarize_tensor_with_threshold(x, theta=1):
-    """
-    Ternary quantizer where 
-    x = -1 if x <= -threshold,
-    x = 0  if -threshold < x < threshold,
-    x = 1  if x >= threshold
-    """
-    q = K.cast(tf.abs(x) >= theta, K.floatx()) * tf.sign(x)
-    # q = K.cast(tf.abs(x) >= theta, K.floatx()) * x
-    return q
+from quantization import ternarize_tensor_with_threshold
 
 
 def cast_tensor_to_float32(tensor):
@@ -53,7 +31,9 @@ def normalize_img(image):
 
 
 def ternarize_img(image):
-    return ternarize_tensor_with_threshold(image, theta=0.7*tf.reduce_mean(tf.abs(image)))
+    return ternarize_tensor_with_threshold(
+        image, theta=0.7 * tf.reduce_mean(tf.abs(image))
+    )
 
 
 def cast_tensor_to_int8(tensor):
@@ -88,36 +68,51 @@ def prepare_for_tfhe_regular(image, label):
     return img, lbl
 
 
-for enlarge in [True, False]:
-    # Preprocess the data
-    AUTOTUNE = tf.data.experimental.AUTOTUNE
-    ds_test = ds_test.map(
-        prepare_for_tfhe_enlarged if enlarge else prepare_for_tfhe_regular, num_parallel_calls=AUTOTUNE)
+def extract_ternarized_mnist_test_dataset():
+    # Load MNIST using tfds
+    ds_test, ds_info = tfds.load(
+        "mnist",
+        split="test",
+        shuffle_files=False,
+        as_supervised=True,
+        with_info=True,
+    )
+    print("Loaded MNIST test set as supervised")
+    for enlarge in [True, False]:
+        # Preprocess the data
+        AUTOTUNE = tf.data.experimental.AUTOTUNE
+        ds_test = ds_test.map(
+            prepare_for_tfhe_enlarged if enlarge else prepare_for_tfhe_regular,
+            num_parallel_calls=AUTOTUNE,
+        )
 
-    print("Preprocessed MNIST for TFHE")
+        print("Preprocessed MNIST for TFHE")
 
-    # Iterate over the dataset and append the elements to the list
-    image_list = []
-    label_list = []
-    for example in ds_test:
-        image_list.append(example[0].numpy())
-        label_list.append(example[1].numpy())
-    image_list, label_list = np.array(image_list), np.array(label_list)
+        # Iterate over the dataset and append the elements to the list
+        image_list = []
+        label_list = []
+        for example in ds_test:
+            image_list.append(example[0].numpy())
+            label_list.append(example[1].numpy())
+        image_list, label_list = np.array(image_list), np.array(label_list)
 
-    # More pythonic lol
-    # X, y = zip(*tfds.as_numpy(ds_test))
+        print("Converted to Numpy")
 
-    print("Converted to Numpy")
+        # Save files
+        directory = "./mnist_preprocessed"
+        if not os.path.exists(directory):
+            os.makedirs(directory)
+        np.save(
+            directory + f'/mnist_images_norm_tern{"_128x128" if enlarge else ""}.npy',
+            image_list,
+        )
+        np.save(
+            directory + f'/mnist_labels{"_128x128" if enlarge else ""}.npy', label_list
+        )
+        np.savez(
+            directory + f'/mnist_norm_tern{"_128x128" if enlarge else ""}.npz',
+            X=image_list,
+            y=label_list,
+        )
 
-    # Save files
-    directory = './mnist_preprocessed'
-    if not os.path.exists(directory):
-        os.makedirs(directory)
-    np.save(
-        directory+f'/mnist_images_norm_tern{"_128x128" if enlarge else ""}.npy', image_list)
-    np.save(
-        directory+f'/mnist_labels{"_128x128" if enlarge else ""}.npy', label_list)
-    np.savez(directory+f'/mnist_norm_tern{"_128x128" if enlarge else ""}.npz',
-             X=image_list, y=label_list)
-
-print("Saved NPY+NPZ files of preprocessed MNIST Images and Labels")
+    print("Saved NPY+NPZ files of preprocessed MNIST Images and Labels")

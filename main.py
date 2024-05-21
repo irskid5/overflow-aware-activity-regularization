@@ -1,6 +1,11 @@
 from mnist_rnn_model import get_model
-from utils.model_utils import mod_sign_with_tanh_deriv, sign_with_tanh_deriv
+from utils.model_utils import (
+    mod_sign_with_tanh_deriv,
+    sign_with_tanh_deriv,
+    get_default_layer_options_from_options,
+)
 from export_mnist_weights_h5 import export_mnist_weights
+from export_mnist import extract_ternarized_mnist_test_dataset
 import tensorflow_datasets as tfds
 import tensorflow as tf
 import os
@@ -282,59 +287,6 @@ def get_model_parameter_stats(pretrained_weights: str, options, layer_options):
     return tern_params
 
 
-def get_default_layer_options_from_options(options):
-    """Get a default layer_options object given options."""
-    ternarize_inputs = False
-    t = 1.0
-    s = 1.0
-    activation = tf.keras.activations.tanh
-    oar = False
-    tern_params = {"QRNN_0": 0, "QRNN_1": 0, "DENSE_0": 0, "DENSE_OUT": 0}
-    return {
-        "INPUT": {"ternarize": ternarize_inputs},
-        "QRNN_0": {
-            "activation": activation,
-            "oar": {
-                "use": oar,
-                "lm": options["oar"]["lm"],
-                "precision": options["oar"]["precision"],
-            },
-            "s": s,
-            "τ": t * tern_params["QRNN_0"],
-        },
-        "QRNN_1": {
-            "activation": activation,
-            "oar": {
-                "use": oar,
-                "lm": options["oar"]["lm"],
-                "precision": options["oar"]["precision"],
-            },
-            "s": s,
-            "τ": t * tern_params["QRNN_1"],
-        },
-        "DENSE_0": {
-            "activation": activation,
-            "oar": {
-                "use": oar,
-                "lm": options["oar"]["lm"],
-                "precision": options["oar"]["precision"],
-            },
-            "s": 1.0,
-            "τ": t * tern_params["DENSE_0"],
-        },
-        "DENSE_OUT": {
-            "activation": lambda x: tf.keras.activations.softmax(x),
-            "oar": {
-                "use": True,
-                "lm": 0.0,
-                "precision": options["oar"]["precision"],
-            },
-            "s": 1.0,
-            "τ": t * tern_params["DENSE_OUT"],
-        },
-    }
-
-
 def perform_step_in_four_step_quant(step: int, pretrained_weights: str, options) -> str:
     """Performs a step in the modified four-step quantization procedure.
 
@@ -358,7 +310,6 @@ def perform_step_in_four_step_quant(step: int, pretrained_weights: str, options)
     oar = False
     tern_params = {"QRNN_0": 0, "QRNN_1": 0, "DENSE_0": 0, "DENSE_OUT": 0}
     if step == 2:
-        options["epochs"] *= 5
         s = options["s"]
         activation = sign_with_tanh_deriv
     if step == 3:
@@ -453,21 +404,121 @@ def perform_four_step_quant(options) -> str:
 #########################################################################################################
 # RUN THE MODIFIED FOUR-STEP QUANTIZATION PROCEDURE FOR THE FOLLOWING OPTIONS
 
-options = {
-    "enlarge": False,
-    "epochs": 100,
-    "learning_rate": 1e-4,
-    "batch_size": 512,
-    "t": 1.5,
-    "tᵢ": 0.7,
-    "s": 4.0,
-    "oar": {
-        "lm": 1e-4,
-        "precision": 6,
-    },
-    "quantize": False,
-}
-final_parameters = perform_four_step_quant(options)
-export_mnist_weights(final_parameters)
 
-print("End!")
+def train_quantize_extract_MNIST_RNN() -> str:
+    """This code takes the options below, runs the four-step quantization procedure and trains a quantized model.
+    It then extracts the weights. It returns the pretrained weights from the last step.
+    """
+    options = {
+        "enlarge": False,
+        "epochs": 1,
+        "learning_rate": 1e-4,
+        "batch_size": 512,
+        "t": 1.5,
+        "tᵢ": 0.7,
+        "s": 4.0,
+        "oar": {
+            "lm": 1e-4,
+            "precision": 6,
+        },
+        "quantize": False,
+    }
+    final_parameters = perform_four_step_quant(options)
+    export_mnist_weights(final_parameters)
+    return final_parameters
+
+
+def train_quantize_extract_enlarged_MNIST_RNN() -> str:
+    """This code takes the options below, runs the four-step quantization procedure and trains a quantized model.
+    It then extracts the weights. It returns the pretrained weights from the last step.
+    """
+    options = {
+        "enlarge": True,
+        "epochs": 1,
+        "learning_rate": 5e-6,
+        "batch_size": 512,
+        "t": 1.5,
+        "tᵢ": 0.7,
+        "s": 4.0,
+        "oar": {
+            "lm": 1e-4,
+            "precision": 6,
+        },
+        "quantize": False,
+    }
+    final_parameters = perform_four_step_quant(options)
+    export_mnist_weights(final_parameters)
+    return final_parameters
+
+
+def evaluation_with_and_without_oar2():
+    # First get third step model
+    third_step_options = {
+        "enlarge": False,
+        "epochs": 1,
+        "learning_rate": 1e-4,
+        "batch_size": 512,
+        "t": 1.5,
+        "tᵢ": 0.7,
+        "s": 4.0,
+        "oar": {
+            "lm": 1e-4,
+            "precision": 6,
+        },
+        "quantize": False,
+    }
+    third_step = None
+    for step in range(1, 4):
+        third_step = perform_step_in_four_step_quant(
+            step=step, pretrained_weights=third_step, options=third_step_options
+        )
+    for i in range(2):
+        for ω in range(3, 9):
+            cur_options = third_step_options.copy()
+            cur_options["oar"]["precision"] = ω
+            cur_options["oar"]["lm"] = i * 1e-3
+            perform_step_in_four_step_quant(
+                step=4, pretrained_weights=third_step, options=cur_options
+            )
+
+
+def evaluation_different_oar_regularization_rates():
+    # First get third step model
+    third_step_options = {
+        "enlarge": False,
+        "epochs": 1,
+        "learning_rate": 1e-4,
+        "batch_size": 512,
+        "t": 1.5,
+        "tᵢ": 0.7,
+        "s": 4.0,
+        "oar": {
+            "lm": 1e-4,
+            "precision": 6,
+        },
+        "quantize": False,
+    }
+    third_step = None
+    for step in range(1, 4):
+        third_step = perform_step_in_four_step_quant(
+            step=step, pretrained_weights=third_step, options=third_step_options
+        )
+    rates = [0.0, 1e-6, 5e-6, 1e-5, 5e-5, 1e-4, 5e-4, 1e-3, 5e-3, 1e-2]
+    bits = [5, 6]
+    for ω in bits:
+        for lm in rates:
+            cur_options = third_step_options.copy()
+            cur_options["oar"]["precision"] = ω
+            cur_options["oar"]["lm"] = lm
+            perform_step_in_four_step_quant(
+                step=4, pretrained_weights=third_step, options=cur_options
+            )
+
+
+if __name__ == "__main__":
+    train_quantize_extract_MNIST_RNN()
+    train_quantize_extract_enlarged_MNIST_RNN()
+    evaluation_with_and_without_oar2()
+    evaluation_different_oar_regularization_rates()
+    extract_ternarized_mnist_test_dataset()
+    print("End!")

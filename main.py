@@ -398,11 +398,8 @@ def perform_four_step_quant(options) -> str:
         pretrained_weights = perform_step_in_four_step_quant(
             step=step, pretrained_weights=pretrained_weights, options=options
         )
+        options["epochs"] = 500
     return pretrained_weights
-
-
-#########################################################################################################
-# RUN THE MODIFIED FOUR-STEP QUANTIZATION PROCEDURE FOR THE FOLLOWING OPTIONS
 
 
 def train_quantize_extract_MNIST_RNN() -> str:
@@ -411,7 +408,7 @@ def train_quantize_extract_MNIST_RNN() -> str:
     """
     options = {
         "enlarge": False,
-        "epochs": 1,
+        "epochs": 100,
         "learning_rate": 1e-4,
         "batch_size": 512,
         "t": 1.5,
@@ -424,7 +421,7 @@ def train_quantize_extract_MNIST_RNN() -> str:
         "quantize": False,
     }
     final_parameters = perform_four_step_quant(options)
-    export_mnist_weights(final_parameters)
+    export_mnist_weights(final_parameters, options)
     return final_parameters
 
 
@@ -434,7 +431,7 @@ def train_quantize_extract_enlarged_MNIST_RNN() -> str:
     """
     options = {
         "enlarge": True,
-        "epochs": 1,
+        "epochs": 100,
         "learning_rate": 5e-6,
         "batch_size": 512,
         "t": 1.5,
@@ -447,7 +444,7 @@ def train_quantize_extract_enlarged_MNIST_RNN() -> str:
         "quantize": False,
     }
     final_parameters = perform_four_step_quant(options)
-    export_mnist_weights(final_parameters)
+    export_mnist_weights(final_parameters, options)
     return final_parameters
 
 
@@ -455,7 +452,7 @@ def evaluation_with_and_without_oar2():
     # First get third step model
     third_step_options = {
         "enlarge": False,
-        "epochs": 1,
+        "epochs": 1000,
         "learning_rate": 1e-4,
         "batch_size": 512,
         "t": 1.5,
@@ -486,7 +483,7 @@ def evaluation_different_oar_regularization_rates():
     # First get third step model
     third_step_options = {
         "enlarge": False,
-        "epochs": 1,
+        "epochs": 1000,
         "learning_rate": 1e-4,
         "batch_size": 512,
         "t": 1.5,

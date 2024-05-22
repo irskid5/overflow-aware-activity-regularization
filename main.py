@@ -452,7 +452,7 @@ def evaluation_with_and_without_oar2():
     # First get third step model
     third_step_options = {
         "enlarge": False,
-        "epochs": 1000,
+        "epochs": 100,
         "learning_rate": 1e-4,
         "batch_size": 512,
         "t": 1.5,
@@ -469,6 +469,8 @@ def evaluation_with_and_without_oar2():
         third_step = perform_step_in_four_step_quant(
             step=step, pretrained_weights=third_step, options=third_step_options
         )
+        third_step_options["epochs"] = 500
+    third_step_options["epochs"] = 1000
     for i in range(2):
         for ω in range(3, 9):
             cur_options = third_step_options.copy()
@@ -483,7 +485,7 @@ def evaluation_different_oar_regularization_rates():
     # First get third step model
     third_step_options = {
         "enlarge": False,
-        "epochs": 1000,
+        "epochs": 100,
         "learning_rate": 1e-4,
         "batch_size": 512,
         "t": 1.5,
@@ -500,8 +502,10 @@ def evaluation_different_oar_regularization_rates():
         third_step = perform_step_in_four_step_quant(
             step=step, pretrained_weights=third_step, options=third_step_options
         )
+        third_step_options["epochs"] = 500
     rates = [0.0, 1e-6, 5e-6, 1e-5, 5e-5, 1e-4, 5e-4, 1e-3, 5e-3, 1e-2]
     bits = [5, 6]
+    third_step_options["epochs"] = 1000
     for ω in bits:
         for lm in rates:
             cur_options = third_step_options.copy()

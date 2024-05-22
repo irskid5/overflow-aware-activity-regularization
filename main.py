@@ -398,7 +398,7 @@ def perform_four_step_quant(options) -> str:
         pretrained_weights = perform_step_in_four_step_quant(
             step=step, pretrained_weights=pretrained_weights, options=options
         )
-        options["epochs"] = 500
+        options["epochs"] = 1000
     return pretrained_weights
 
 

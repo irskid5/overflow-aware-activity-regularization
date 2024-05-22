@@ -47,4 +47,4 @@ and navigate across the display. Here, you will be able to find accuracy, loss, 
 
 Section 4.1.4 metrics can also be extracted. After each training run in all experiments, there is a run over the test dataset to get test set metrics, which you are able to see in the console output.
 
-Hyperparmaeters are able to be changed in `options` and `layer_options` objects. For more details, refer to the code.
+Hyperparameters are able to be changed in `options` and `layer_options` objects. For more details, refer to the code.

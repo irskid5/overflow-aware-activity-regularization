@@ -46,3 +46,5 @@ Steps 1 and 2 record a vast amount of metrics in graph form in TensorBoard. To d
 and navigate across the display. Here, you will be able to find accuracy, loss, and OAR metrics. If you navigate to the histograms tab, you will be able to search `preact` and see the pre-activation distributions from step 4 of the 4-step quantization process to recreate the figures in section 4.1.3.
 
 Section 4.1.4 metrics can also be extracted. After each training run in all experiments, there is a run over the test dataset to get test set metrics, which you are able to see in the console output.
+
+Hyperparmaeters are able to be changed in `options` and `layer_options` objects. For more details, refer to the code.

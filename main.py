@@ -87,7 +87,7 @@ def get_datasets(
 ) -> tuple[tf.data.Dataset, tf.data.Dataset, tf.data.Dataset]:
     """Downloads, preprocesses, and prepares the MNIST dataset into three dataloaders:
     training, validation, and test. The validation set is 2500 samples, from the training
-    dataset. The training dataset contains 47500 samples, and the test dataset contains
+    dataset. The training dataset contains 57500 samples, and the test dataset contains
     10000 samples. Resizes the dataset from [28,28] to [128,128] for enlarged MNIST RNN
     run, if selected.
 

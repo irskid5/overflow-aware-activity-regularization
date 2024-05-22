@@ -256,8 +256,6 @@ class QSimpleRNNCellWithOAR(QSimpleRNNCell):
                 initializer="zeros",
                 trainable=False,
             )
-            # self.kernel_qmae = tf.keras.metrics.Mean(
-            #     name='qmae'+"/"+self.kernel.name)  # MAE
         if self.recurrent_quantizer:
             self.quantized_recurrent_kernel = self.add_weight(
                 name="quantized_recurrent_kernel",
@@ -266,8 +264,6 @@ class QSimpleRNNCellWithOAR(QSimpleRNNCell):
                 initializer="zeros",
                 trainable=False,
             )
-            # self.recurrent_kernel_qmae = tf.keras.metrics.Mean(
-            #     name='qmae'+"/"+self.recurrent_kernel.name)  # MAE
 
         self.wx = self.add_weight(
             name="wx_abs",
@@ -420,8 +416,6 @@ class QDenseWithOAR(QDense):
                 initializer="zeros",
                 trainable=False,
             )
-            # self.kernel_qmae = tf.keras.metrics.Mean(
-            #     name='qmae'+"/"+self.kernel.name)  # MAE
 
         self.wx = self.add_weight(
             name="wx_abs",
@@ -512,7 +506,7 @@ def mod_sign_with_tanh_deriv(x, num_bits=8):
     Note, no gradient passes from mod op by using tf.stop_gradient
     """
 
-    # inner function to wrap stop gradient around to not take gradient into account
+    # inner function to wrap stop gradient around to not take gradient into account (signed function)
     def _inner_fn(x, num_bits):
         base = 2**num_bits
         half_base = 2 ** (num_bits - 1)
@@ -536,42 +530,6 @@ def mod_sign_with_tanh_deriv(x, num_bits=8):
         -sign_with_tanh_deriv(x) + sign_with_tanh_deriv(_inner_fn(x, num_bits=num_bits))
     )
 
-    # For seeing distribution of input to activation
-    # (Note: The try must be kept or else it will fail on the initial tf graphing)
-    # try:
-    #     plot_histogram_discrete(x, "histogram_of_wxplusb.png")
-    #     plot_histogram_discrete(signed_float, "histogram_of_wxplusb_modded.png")
-    # except:
-    #     return out
-    return out
-
-
-def mod_on_inputs(x, num_bits=8):
-    """
-    Compute x mod 2**num_bits then run relu.
-    Note, no gradient passes from mod op by using tf.stop_gradient
-    """
-
-    # inner function to wrap stop gradient around to not take gradient into account
-    def _inner_fn(x, num_bits):
-        base = 2**num_bits
-        half_base = 2 ** (num_bits - 1)
-
-        # Cast to int to do modular reduction
-        x_int = tf.cast(x, tf.int32)
-
-        # Perform modular reduction (creating unsigned int)
-        modded = tf.math.mod(x_int, base)
-
-        # Sign the int
-        signed = tf.where(tf.greater_equal(modded, half_base), modded - base, modded)
-
-        # Cast back to float
-        signed_float = tf.cast(signed, tf.float32)
-
-        return signed_float
-
-    out = x + tf.stop_gradient(-x + _inner_fn(x, num_bits=num_bits))
     return out
 
 
@@ -612,25 +570,6 @@ class GeneralActivation(tf.keras.layers.Layer):
 
     def build(self, input_shape):
         super(GeneralActivation, self).build(input_shape)
-
-        # new_shape = [512, input_shape[-1]]
-
-        # # Build shape dependent stats
-        # self.input_dist = self.add_weight(
-        #     name=self.name+"/pre-activations",
-        #     shape=new_shape,
-        #     dtype=tf.float32,
-        #     initializer="zeros",
-        #     trainable=False,
-        # )
-        # self.output_dist = self.add_weight(
-        #     name=self.name+"/activations",
-        #     shape=new_shape,
-        #     dtype=tf.float32,
-        #     initializer="zeros",
-        #     trainable=False,
-        # )
-
         self.built = True
 
     def __call__(self, inputs):
@@ -644,20 +583,6 @@ class GeneralActivation(tf.keras.layers.Layer):
         # Run activation
         if self.activation:
             out = self.activation(out)
-
-        # # Compute stats
-        # inputs_for_stats = tf.zeros_like(inputs) + inputs
-        # outputs_for_stats = tf.zeros_like(out) + out
-        # if (size_shape == 3):
-        #     inputs_for_stats = tf.reduce_mean(inputs_for_stats, 1)
-        #     outputs_for_stats = tf.reduce_mean(outputs_for_stats, 1)
-
-        # # Calculate input stats
-        # self.input_dist.assign(0.1 * inputs_for_stats + 0.9 * self.input_dist)
-
-        # # Calculate output stats
-        # self.output_dist.assign(
-        #     0.1 * outputs_for_stats + 0.9 * self.output_dist)
 
         self.inp_moving_mean.assign(
             0.9 * self.inp_moving_mean + 0.1 * tf.reduce_mean(inputs)
@@ -689,21 +614,6 @@ def oar_hat_fn(x, k, a):
 
 
 def oar_hat_metric_fn(x, k, a):
-    """
-    A function that calculates the ratio between values in correct regions and all values.
-    To be used as input into metric function (ex. tf.keras.metrics.Mean()).
-
-    Takes the sign of the no_acc_reg function which gives you whether a value is in a wrong
-    region (+1) or correct region (0). Adding all the values in the tensor and dividing by the
-    total number of values is effectively the count of wrong values over all values. This is
-    also more easily represented as the mean of the tensor. 1 - mean(wrongs) gives the ratio
-    of correct values over all values.
-
-    k is the modulus of quantization.
-    a is the height of no_acc_reg_hat_fn.
-
-    Important: this implementation only to be used with no_acc_reg_hat_fn!
-    """
     wrongs = tf.sign(oar_hat_fn(x, k=k, a=a))
     rights_ratio = 1 - tf.reduce_mean(wrongs, axis=[-1])
     return rights_ratio
@@ -711,15 +621,7 @@ def oar_hat_metric_fn(x, k, a):
 
 class OAR1(tf.keras.layers.Layer):
     """
-    This regularizer penalizes pre-activations that lie in incorrectly-signed regions of the domain
-    after a modulo operation and sign are applied.
-
-    Ex. if K (modulus) = 8, then a result of Wx_i mod 8 = 4 mod 8 = -4 instead of +4 which can lead a
-    sign activation function outputting wrong -1 instead of +1. This is important for binary/ternary
-    networks.
-
-    This specific version implements a hat function (ex. __/\__/\__). This is supposed to provide a constant
-    derivative in the incorrect regions to move them to the correct regions.
+    The overflow-aware activity regularizer (OAR₁). Adjust rate using lm, and plaintext modulus size using k.
     """
 
     def __init__(self, lm=1e-3, k=2**8, a=1.0, name=""):
@@ -746,17 +648,7 @@ class OAR1(tf.keras.layers.Layer):
 
 
 class OAR2(tf.keras.layers.Layer):
-    """
-    This regularizer penalizes pre-activations that lie in incorrectly-signed regions of the domain
-    after a modulo operation and sign are applied. The output is squared.
-
-    Ex. if K (modulus) = 8, then a result of Wx_i mod 8 = 4 mod 8 = -4 instead of +4 which can lead a
-    sign activation function outputting wrong -1 instead of +1. This is important for binary/ternary
-    networks.
-
-    This specific version implements a hat function (ex. __/\__/\__). This is supposed to provide a constant
-    derivative in the incorrect regions to move them to the correct regions.
-    """
+    """The overflow-aware activity regularizer (OAR₂). Adjust rate using lm, and plaintext modulus size using k."""
 
     def __init__(self, lm=1e-3, k=2**8, a=1.0, name=""):
         super(OAR2, self).__init__()
@@ -779,17 +671,6 @@ class OAR2(tf.keras.layers.Layer):
 
     def get_config(self):
         return {"lm": float(self.lm), "k": int(self.k), "a": float(self.a)}
-
-
-class BreakpointLayerForDebug(tf.keras.layers.Layer):
-
-    def __init__(self, **kwargs):
-        super(BreakpointLayerForDebug, self).__init__(**kwargs)
-
-    def call(self, inputs):
-        vele = "ferus"  # place breakpoint here
-        # inputs = tf.where(tf.math.is_nan(inputs), tf.zeros_like(inputs), inputs)
-        return inputs
 
 
 class TimeReduction(tf.keras.layers.Layer):

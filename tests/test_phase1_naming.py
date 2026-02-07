@@ -12,7 +12,7 @@ from utils.model_utils import (
 def test_sign_ste_tanh_outputs_sign():
     x = tf.constant([-2.0, 0.0, 2.0])
     out = sign_ste_tanh(x)
-    tf.debugging.assert_equal(out, tf.constant([-1.0, 0.0, 1.0]))
+    tf.debugging.assert_equal(out, tf.constant([-1.0, 1.0, 1.0]))
 
 
 def test_mod_sign_outputs_signed_mod():

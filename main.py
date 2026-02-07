@@ -505,10 +505,10 @@ def evaluation_different_oar_regularization_rates():
     rates = [0.0, 1e-6, 5e-6, 1e-5, 5e-5, 1e-4, 5e-4, 1e-3, 5e-3, 1e-2]
     bits = [5, 6]
     for ω in bits:
-        for lm in rates:
+        for oar_lambda in rates:
             cur_options = third_step_options.copy()
             cur_options["oar"]["omega"] = ω
-            cur_options["oar"]["oar_lambda"] = lm
+            cur_options["oar"]["oar_lambda"] = oar_lambda
             perform_step_in_four_step_quant(
                 step=4, pretrained_weights=third_step, options=cur_options
             )

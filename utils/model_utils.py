@@ -236,7 +236,7 @@ class QSimpleRNNCellWithOAR(QSimpleRNNCell):
         self.oar_lambda = oar_lambda
         self.omega = omega
         if use_oar:
-            self.oar = OAR2(lm=oar_lambda, k=2**omega, name=kwargs["name"])
+            self.oar = OAR2(oar_lambda=oar_lambda, k=2**omega, name=kwargs["name"])
 
         # Gradient scaling
         self.s = s
@@ -378,7 +378,7 @@ class QDenseWithOAR(QDense):
         self.oar_lambda = oar_lambda
         self.omega = omega
         if use_oar:
-            self.oar = OAR2(lm=oar_lambda, k=2**omega, name=kwargs["name"])
+            self.oar = OAR2(oar_lambda=oar_lambda, k=2**omega, name=kwargs["name"])
 
         # Gradient scale
         self.s = s
@@ -612,19 +612,19 @@ def compute_oar_metric(x, k, a):
 
 class OAR1(tf.keras.layers.Layer):
     """
-    The overflow-aware activity regularizer (OAR₁). Adjust rate using lm, and plaintext modulus size using k.
+    The overflow-aware activity regularizer (OAR₁). Adjust rate using oar_lambda, and plaintext modulus size using k.
     """
 
-    def __init__(self, lm=1e-3, k=2**8, a=1.0, name=""):
+    def __init__(self, oar_lambda=1e-3, k=2**8, a=1.0, name=""):
         super(OAR1, self).__init__()
-        self.lm = lm
+        self.oar_lambda = oar_lambda
         self.k = k
         self.a = a
         self.no_acc_metric = tf.keras.metrics.Mean(name="OAR1/" + name)
 
     def __call__(self, x):
         loss = oar_penalty_fn(x=x, k=self.k, a=self.a)
-        loss = self.lm * tf.reduce_sum(loss)
+        loss = self.oar_lambda * tf.reduce_sum(loss)
 
         accuracy = compute_oar_metric(x, k=self.k, a=self.a)
         accuracy = self.no_acc_metric(accuracy)
@@ -635,22 +635,22 @@ class OAR1(tf.keras.layers.Layer):
         return x
 
     def get_config(self):
-        return {"lm": float(self.lm), "k": int(self.k), "a": float(self.a)}
+        return {"oar_lambda": float(self.oar_lambda), "k": int(self.k), "a": float(self.a)}
 
 
 class OAR2(tf.keras.layers.Layer):
-    """The overflow-aware activity regularizer (OAR₂). Adjust rate using lm, and plaintext modulus size using k."""
+    """The overflow-aware activity regularizer (OAR₂). Adjust rate using oar_lambda, and plaintext modulus size using k."""
 
-    def __init__(self, lm=1e-3, k=2**8, a=1.0, name=""):
+    def __init__(self, oar_lambda=1e-3, k=2**8, a=1.0, name=""):
         super(OAR2, self).__init__()
-        self.lm = lm
+        self.oar_lambda = oar_lambda
         self.k = k
         self.a = a
         self.no_acc_metric = tf.keras.metrics.Mean(name="OAR2/" + name)
 
     def __call__(self, x):
         loss = tf.square(oar_penalty_fn(x=x, k=self.k, a=self.a))
-        loss = self.lm * tf.reduce_sum(loss)
+        loss = self.oar_lambda * tf.reduce_sum(loss)
 
         accuracy = compute_oar_metric(x, k=self.k, a=self.a)
         accuracy = self.no_acc_metric(accuracy)
@@ -661,7 +661,7 @@ class OAR2(tf.keras.layers.Layer):
         return x
 
     def get_config(self):
-        return {"lm": float(self.lm), "k": int(self.k), "a": float(self.a)}
+        return {"oar_lambda": float(self.oar_lambda), "k": int(self.k), "a": float(self.a)}
 
 
 class Downsampling(tf.keras.layers.Layer):

@@ -1,7 +1,7 @@
 from mnist_rnn_model import get_model
 from utils.model_utils import (
-    mod_sign_with_tanh_deriv,
-    sign_with_tanh_deriv,
+    mod_sign,
+    sign_ste_tanh,
     get_default_layer_options_from_options,
 )
 from export_mnist_weights_h5 import export_mnist_weights
@@ -311,7 +311,7 @@ def perform_step_in_four_step_quant(step: int, pretrained_weights: str, options)
     tern_params = {"QRNN_0": 0, "QRNN_1": 0, "DENSE_0": 0, "DENSE_OUT": 0}
     if step == 2:
         s = options["s"]
-        activation = sign_with_tanh_deriv
+        activation = sign_ste_tanh
     if step == 3:
         ternarize_inputs = True
     if step == 4:
@@ -326,7 +326,7 @@ def perform_step_in_four_step_quant(step: int, pretrained_weights: str, options)
         print(tern_params)
 
         def activation(x):
-            return mod_sign_with_tanh_deriv(x, num_bits=options["oar"]["precision"])
+            return mod_sign(x, num_bits=options["oar"]["omega"])
 
     # Adjust layer options
     layer_options = {
@@ -335,8 +335,8 @@ def perform_step_in_four_step_quant(step: int, pretrained_weights: str, options)
             "activation": activation,
             "oar": {
                 "use": oar,
-                "lm": options["oar"]["lm"],
-                "precision": options["oar"]["precision"],
+                "oar_lambda": options["oar"]["oar_lambda"],
+                "omega": options["oar"]["omega"],
             },
             "s": s,
             "τ": t * tern_params["QRNN_0"],
@@ -345,8 +345,8 @@ def perform_step_in_four_step_quant(step: int, pretrained_weights: str, options)
             "activation": activation,
             "oar": {
                 "use": oar,
-                "lm": options["oar"]["lm"],
-                "precision": options["oar"]["precision"],
+                "oar_lambda": options["oar"]["oar_lambda"],
+                "omega": options["oar"]["omega"],
             },
             "s": s,
             "τ": t * tern_params["QRNN_1"],
@@ -355,8 +355,8 @@ def perform_step_in_four_step_quant(step: int, pretrained_weights: str, options)
             "activation": activation,
             "oar": {
                 "use": oar,
-                "lm": options["oar"]["lm"],
-                "precision": options["oar"]["precision"],
+                "oar_lambda": options["oar"]["oar_lambda"],
+                "omega": options["oar"]["omega"],
             },
             "s": 1.0,
             "τ": t * tern_params["DENSE_0"],
@@ -365,8 +365,8 @@ def perform_step_in_four_step_quant(step: int, pretrained_weights: str, options)
             "activation": lambda x: tf.keras.activations.softmax(x),
             "oar": {
                 "use": True,
-                "lm": 0.0,
-                "precision": options["oar"]["precision"],
+                "oar_lambda": 0.0,
+                "omega": options["oar"]["omega"],
             },
             "s": 1.0,
             "τ": t * tern_params["DENSE_OUT"],
@@ -415,8 +415,8 @@ def train_quantize_extract_MNIST_RNN() -> str:
         "tᵢ": 0.7,
         "s": 4.0,
         "oar": {
-            "lm": 1e-4,
-            "precision": 6,
+            "oar_lambda": 1e-4,
+            "omega": 6,
         },
         "quantize": False,
     }
@@ -438,8 +438,8 @@ def train_quantize_extract_enlarged_MNIST_RNN() -> str:
         "tᵢ": 0.7,
         "s": 4.0,
         "oar": {
-            "lm": 1e-4,
-            "precision": 6,
+            "oar_lambda": 1e-4,
+            "omega": 6,
         },
         "quantize": False,
     }
@@ -459,8 +459,8 @@ def evaluation_with_and_without_oar2():
         "tᵢ": 0.7,
         "s": 4.0,
         "oar": {
-            "lm": 1e-4,
-            "precision": 6,
+            "oar_lambda": 1e-4,
+            "omega": 6,
         },
         "quantize": False,
     }
@@ -473,8 +473,8 @@ def evaluation_with_and_without_oar2():
     for i in range(2):
         for ω in range(3, 9):
             cur_options = third_step_options.copy()
-            cur_options["oar"]["precision"] = ω
-            cur_options["oar"]["lm"] = i * 1e-3
+            cur_options["oar"]["omega"] = ω
+            cur_options["oar"]["oar_lambda"] = i * 1e-3
             perform_step_in_four_step_quant(
                 step=4, pretrained_weights=third_step, options=cur_options
             )
@@ -491,8 +491,8 @@ def evaluation_different_oar_regularization_rates():
         "tᵢ": 0.7,
         "s": 4.0,
         "oar": {
-            "lm": 1e-4,
-            "precision": 6,
+            "oar_lambda": 1e-4,
+            "omega": 6,
         },
         "quantize": False,
     }
@@ -507,8 +507,8 @@ def evaluation_different_oar_regularization_rates():
     for ω in bits:
         for lm in rates:
             cur_options = third_step_options.copy()
-            cur_options["oar"]["precision"] = ω
-            cur_options["oar"]["lm"] = lm
+            cur_options["oar"]["omega"] = ω
+            cur_options["oar"]["oar_lambda"] = lm
             perform_step_in_four_step_quant(
                 step=4, pretrained_weights=third_step, options=cur_options
             )

@@ -27,8 +27,8 @@ class QRNNWithOAR(tf.keras.layers.RNN):
         bias_initializer=None,
         use_bias=False,
         use_oar=False,
-        oar_lm=0,
-        oar_bits=32,
+        oar_lambda=0,
+        omega=32,
         s=1.0,
         unroll=False,
         name="",
@@ -41,8 +41,8 @@ class QRNNWithOAR(tf.keras.layers.RNN):
 
         # Overflow-Aware Activity Regularization
         self.use_oar = use_oar
-        self.oar_lm = oar_lm
-        self.oar_bits = oar_bits
+        self.oar_lambda = oar_lambda
+        self.omega = omega
 
         # Gradient scaling
         self.s = s
@@ -65,8 +65,8 @@ class QRNNWithOAR(tf.keras.layers.RNN):
                 bias_quantizer=bias_quantizer,
                 use_bias=use_bias,
                 use_oar=use_oar,
-                oar_lm=oar_lm,
-                oar_bits=oar_bits,
+                oar_lambda=oar_lambda,
+                omega=omega,
                 s=s,
                 name=name,
             )
@@ -205,8 +205,8 @@ class QSimpleRNNCellWithOAR(QSimpleRNNCell):
         bias_quantizer=None,
         state_quantizer=None,
         use_oar=False,
-        oar_lm=0,
-        oar_bits=32,
+        oar_lambda=0,
+        omega=32,
         s=1,
         **kwargs
     ):
@@ -233,10 +233,10 @@ class QSimpleRNNCellWithOAR(QSimpleRNNCell):
 
         # Overflow-Aware Activity Regularization (must unroll rnn)
         self.oar = None
-        self.oar_lm = oar_lm
-        self.oar_bits = oar_bits
+        self.oar_lambda = oar_lambda
+        self.omega = omega
         if use_oar:
-            self.oar = OAR2(lm=oar_lm, k=2**oar_bits, name=kwargs["name"])
+            self.oar = OAR2(lm=oar_lambda, k=2**omega, name=kwargs["name"])
 
         # Gradient scaling
         self.s = s
@@ -367,18 +367,18 @@ class QDenseWithOAR(QDense):
         kernel_range=None,
         bias_range=None,
         use_oar=False,
-        oar_lm=0,
-        oar_bits=32,
+        oar_lambda=0,
+        omega=32,
         s=1,
         **kwargs
     ):
 
         # Overflow-Aware Activity Regularization
         self.oar = None
-        self.oar_lm = oar_lm
-        self.oar_bits = oar_bits
+        self.oar_lambda = oar_lambda
+        self.omega = omega
         if use_oar:
-            self.oar = OAR2(lm=oar_lm, k=2**oar_bits, name=kwargs["name"])
+            self.oar = OAR2(lm=oar_lambda, k=2**omega, name=kwargs["name"])
 
         # Gradient scale
         self.s = s
@@ -820,8 +820,8 @@ def get_default_layer_options_from_options(options):
             "activation": activation,
             "oar": {
                 "use": oar,
-                "lm": options["oar"]["lm"],
-                "precision": options["oar"]["precision"],
+                "oar_lambda": options["oar"]["oar_lambda"],
+                "omega": options["oar"]["omega"],
             },
             "s": s,
             "τ": t * tern_params["QRNN_0"],
@@ -830,8 +830,8 @@ def get_default_layer_options_from_options(options):
             "activation": activation,
             "oar": {
                 "use": oar,
-                "lm": options["oar"]["lm"],
-                "precision": options["oar"]["precision"],
+                "oar_lambda": options["oar"]["oar_lambda"],
+                "omega": options["oar"]["omega"],
             },
             "s": s,
             "τ": t * tern_params["QRNN_1"],
@@ -840,8 +840,8 @@ def get_default_layer_options_from_options(options):
             "activation": activation,
             "oar": {
                 "use": oar,
-                "lm": options["oar"]["lm"],
-                "precision": options["oar"]["precision"],
+                "oar_lambda": options["oar"]["oar_lambda"],
+                "omega": options["oar"]["omega"],
             },
             "s": 1.0,
             "τ": t * tern_params["DENSE_0"],
@@ -850,8 +850,8 @@ def get_default_layer_options_from_options(options):
             "activation": lambda x: tf.keras.activations.softmax(x),
             "oar": {
                 "use": True,
-                "lm": 0.0,
-                "precision": options["oar"]["precision"],
+                "oar_lambda": 0.0,
+                "omega": options["oar"]["omega"],
             },
             "s": 1.0,
             "τ": t * tern_params["DENSE_OUT"],

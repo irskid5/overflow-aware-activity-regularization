@@ -1,11 +1,11 @@
 from qkeras import *
 
 from utils.model_utils import (
-    TimeReduction,
+    Downsampling,
     QDenseWithOAR,
     QRNNWithOAR,
-    ModelWithGradInfo,
-    GeneralActivation,
+    OARModel,
+    TrackedActivation,
 )
 from quantization import ternarize_tensor_with_threshold, TernarizationWithThreshold
 
@@ -64,7 +64,7 @@ def get_model(options, layer_options):
     qrnn_0 = QRNNWithOAR(
         cell=None,
         units=128,
-        activation=GeneralActivation(
+        activation=TrackedActivation(
             activation=layer_options["QRNN_0"]["activation"], name="QRNN_0"
         ),
         batch_size=options["batch_size"],
@@ -91,16 +91,16 @@ def get_model(options, layer_options):
         kernel_initializer=rnn_kernel_initializer,
         recurrent_initializer=rnn_recurrent_initializer,
         use_oar=layer_options["QRNN_0"]["oar"]["use"],
-        oar_lm=layer_options["QRNN_0"]["oar"]["lm"],
-        oar_bits=layer_options["QRNN_0"]["oar"]["precision"],
+        oar_lambda=layer_options["QRNN_0"]["oar"]["oar_lambda"],
+        omega=layer_options["QRNN_0"]["oar"]["omega"],
         s=layer_options["QRNN_0"]["s"],
         name="QRNN_0",
     )(input)
-    tr = TimeReduction(reduction_factor=2)(qrnn_0)
+    tr = Downsampling(reduction_factor=2)(qrnn_0)
     qrnn_1 = QRNNWithOAR(
         cell=None,
         units=128,
-        activation=GeneralActivation(
+        activation=TrackedActivation(
             activation=layer_options["QRNN_1"]["activation"], name="QRNN_1"
         ),
         batch_size=options["batch_size"],
@@ -127,15 +127,15 @@ def get_model(options, layer_options):
         kernel_initializer=rnn_kernel_initializer,
         recurrent_initializer=rnn_recurrent_initializer,
         use_oar=layer_options["QRNN_1"]["oar"]["use"],
-        oar_lm=layer_options["QRNN_1"]["oar"]["lm"],
-        oar_bits=layer_options["QRNN_1"]["oar"]["precision"],
+        oar_lambda=layer_options["QRNN_1"]["oar"]["oar_lambda"],
+        omega=layer_options["QRNN_1"]["oar"]["omega"],
         s=layer_options["QRNN_1"]["s"],
         name="QRNN_1",
     )(tr)
     qrnn_1 = tf.keras.layers.Flatten()(qrnn_1)
     dense_0 = QDenseWithOAR(
         1024,
-        activation=GeneralActivation(
+        activation=TrackedActivation(
             activation=layer_options["DENSE_0"]["activation"], name="DENSE_0"
         ),
         batch_size=options["batch_size"],
@@ -150,15 +150,15 @@ def get_model(options, layer_options):
         ),
         kernel_initializer=dense_kernel_initializer,
         use_oar=layer_options["DENSE_0"]["oar"]["use"],
-        oar_lm=layer_options["DENSE_0"]["oar"]["lm"],
-        oar_bits=layer_options["DENSE_0"]["oar"]["precision"],
+        oar_lambda=layer_options["DENSE_0"]["oar"]["oar_lambda"],
+        omega=layer_options["DENSE_0"]["oar"]["omega"],
         s=layer_options["DENSE_0"]["s"],
         name="DENSE_0",
     )(qrnn_1)
     output = QDenseWithOAR(
         10,
         use_bias=False,
-        activation=GeneralActivation(
+        activation=TrackedActivation(
             activation=layer_options["DENSE_OUT"]["activation"], name="DENSE_OUT"
         ),
         batch_size=options["batch_size"],
@@ -172,13 +172,13 @@ def get_model(options, layer_options):
         ),
         kernel_initializer=dense_kernel_initializer,
         use_oar=layer_options["DENSE_OUT"]["oar"]["use"],
-        oar_lm=layer_options["DENSE_OUT"]["oar"]["lm"],
-        oar_bits=layer_options["DENSE_OUT"]["oar"]["precision"],
+        oar_lambda=layer_options["DENSE_OUT"]["oar"]["oar_lambda"],
+        omega=layer_options["DENSE_OUT"]["oar"]["omega"],
         s=layer_options["DENSE_OUT"]["s"],
         name="DENSE_OUT",
     )(dense_0)
 
-    model = ModelWithGradInfo(
+    model = OARModel(
         inputs=[input],
         outputs=[output],
         name="MNIST_RNN" if not options["enlarge"] else "ENLARGED_MNIST_RNN",

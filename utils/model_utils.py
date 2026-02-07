@@ -290,7 +290,7 @@ class QSimpleRNNCellWithOAR(QSimpleRNNCell):
         )
 
     def call(self, inputs, states, training=None):
-        prev_output = states[0] if nest.is_sequence(states) else states
+        prev_output = states[0] if tf.nest.is_nested(states) else states
 
         # Quantize the state
         if self.state_quantizer:

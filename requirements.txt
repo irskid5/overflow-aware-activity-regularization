@@ -1,3 +1,4 @@
+# Core dependencies
 absl-py==1.4.0
 astunparse==1.6.3
 cachetools==5.3.3
@@ -64,3 +65,14 @@ typing_extensions==4.11.0
 urllib3==2.2.1
 Werkzeug==3.0.3
 wrapt==1.16.0
+
+# NVIDIA CUDA libraries for GPU support (TF 2.10.1 + CUDA 11)
+nvidia-cublas-cu11==11.11.3.6
+nvidia-cuda-nvcc-cu11==11.8.89
+nvidia-cuda-nvrtc-cu11==11.8.89
+nvidia-cuda-runtime-cu11==11.8.89
+nvidia-cudnn-cu11==8.6.0.163
+nvidia-cufft-cu11==10.9.0.58
+nvidia-curand-cu11==10.3.0.86
+nvidia-cusolver-cu11==11.4.1.48
+nvidia-cusparse-cu11==11.7.5.86

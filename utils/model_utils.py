@@ -483,24 +483,14 @@ class QDenseWithOAR(QDense):
         return output
 
 
-def sign_with_ste(x):
-    """
-    Compute the signum function in the fwd pass but return STE approximation for grad in bkwd pass
-    """
-    out = x
-    q = tf.math.sign(x)
-    q += 1.0 - tf.math.abs(q)
-    return out + tf.stop_gradient(-out + q)
-
-
-def sign_with_tanh_deriv(x):
+def sign_ste_tanh(x):
     out = tf.keras.activations.tanh(x)
     q = tf.math.sign(x)
     q += 1.0 - tf.math.abs(q)
     return out + tf.stop_gradient(-out + q)
 
 
-def mod_sign_with_tanh_deriv(x, num_bits=8):
+def mod_sign(x, num_bits=8):
     """
     Compute x mod 2**num_bits then run relu.
     Note, no gradient passes from mod op by using tf.stop_gradient
@@ -526,16 +516,16 @@ def mod_sign_with_tanh_deriv(x, num_bits=8):
         return signed_float
 
     # Regular sign
-    out = sign_with_tanh_deriv(x) + tf.stop_gradient(
-        -sign_with_tanh_deriv(x) + sign_with_tanh_deriv(_inner_fn(x, num_bits=num_bits))
+    out = sign_ste_tanh(x) + tf.stop_gradient(
+        -sign_ste_tanh(x) + sign_ste_tanh(_inner_fn(x, num_bits=num_bits))
     )
 
     return out
 
 
-class GeneralActivation(tf.keras.layers.Layer):
+class TrackedActivation(tf.keras.layers.Layer):
     def __init__(self, activation=None, name=""):
-        super(GeneralActivation, self).__init__()
+        super(TrackedActivation, self).__init__()
         self.activation = activation
 
         self.inp_moving_mean = self.add_weight(
@@ -569,7 +559,7 @@ class GeneralActivation(tf.keras.layers.Layer):
         self.built = False
 
     def build(self, input_shape):
-        super(GeneralActivation, self).build(input_shape)
+        super(TrackedActivation, self).build(input_shape)
         self.built = True
 
     def __call__(self, inputs):
@@ -605,16 +595,17 @@ class GeneralActivation(tf.keras.layers.Layer):
         }
 
 
-def oar_hat_fn(x, k, a):
-    t_x = 1 / k * (tf.abs(x) - (3 / 4 * k - 1 / 2))
-    mod = tf.math.mod(t_x, 1)
-    abs = tf.abs(2 * mod - 1)
-    out = 2 * abs - 1
+def oar_penalty_fn(x, k, a):
+    # Paper formula (Equation 1):
+    # OAR₁(x, k) = ReLU(1 - (4/k) · | (|x + 0.5| - k/4) mod k - k/2 |)
+    inner = tf.abs(x + 0.5) - k / 4
+    modded = tf.math.mod(inner, k)
+    out = 1 - (4 / k) * tf.abs(modded - k / 2)
     return a * tf.nn.relu(out)
 
 
-def oar_hat_metric_fn(x, k, a):
-    wrongs = tf.sign(oar_hat_fn(x, k=k, a=a))
+def compute_oar_metric(x, k, a):
+    wrongs = tf.sign(oar_penalty_fn(x, k=k, a=a))
     rights_ratio = 1 - tf.reduce_mean(wrongs, axis=[-1])
     return rights_ratio
 
@@ -632,10 +623,10 @@ class OAR1(tf.keras.layers.Layer):
         self.no_acc_metric = tf.keras.metrics.Mean(name="OAR1/" + name)
 
     def __call__(self, x):
-        loss = oar_hat_fn(x=x, k=self.k, a=self.a)
+        loss = oar_penalty_fn(x=x, k=self.k, a=self.a)
         loss = self.lm * tf.reduce_sum(loss)
 
-        accuracy = oar_hat_metric_fn(x, k=self.k, a=self.a)
+        accuracy = compute_oar_metric(x, k=self.k, a=self.a)
         accuracy = self.no_acc_metric(accuracy)
 
         self.add_loss(loss)
@@ -658,10 +649,10 @@ class OAR2(tf.keras.layers.Layer):
         self.no_acc_metric = tf.keras.metrics.Mean(name="OAR2/" + name)
 
     def __call__(self, x):
-        loss = tf.square(oar_hat_fn(x=x, k=self.k, a=self.a))
+        loss = tf.square(oar_penalty_fn(x=x, k=self.k, a=self.a))
         loss = self.lm * tf.reduce_sum(loss)
 
-        accuracy = oar_hat_metric_fn(x, k=self.k, a=self.a)
+        accuracy = compute_oar_metric(x, k=self.k, a=self.a)
         accuracy = self.no_acc_metric(accuracy)
 
         self.add_loss(loss)
@@ -673,11 +664,11 @@ class OAR2(tf.keras.layers.Layer):
         return {"lm": float(self.lm), "k": int(self.k), "a": float(self.a)}
 
 
-class TimeReduction(tf.keras.layers.Layer):
+class Downsampling(tf.keras.layers.Layer):
 
     def __init__(self, reduction_factor, batch_size=None, **kwargs):
 
-        super(TimeReduction, self).__init__(**kwargs)
+        super(Downsampling, self).__init__(**kwargs)
 
         self.reduction_factor = reduction_factor
         self.batch_size = batch_size
@@ -737,7 +728,11 @@ class TimeReduction(tf.keras.layers.Layer):
         return config
 
 
-class ModelWithGradInfo(tf.keras.models.Model):
+class OARModel(tf.keras.models.Model):
+    def __init__(self, *args, log_gradients=False, **kwargs):
+        super(OARModel, self).__init__(*args, **kwargs)
+        self.log_gradients = log_gradients
+
     def train_step(self, data):
         """The logic for one training step.
 
@@ -777,58 +772,37 @@ class ModelWithGradInfo(tf.keras.models.Model):
 
         output = self.compute_metrics(x, y, y_pred, sample_weight)
 
-        # Calc additional grad stats
-        # REG GRADS
-        # reg_grads = tape.gradient(tf.add_n(self.losses), self.trainable_variables)
-        # reg_grad_norms_names = ["grad_norm/reg_"+g.name for g in self.trainable_variables]
-        # reg_grad_squares = [tf.reduce_sum(tf.square(g)) for g in reg_grads]
-        # reg_grad_norms = [tf.sqrt(g) for g in reg_grad_squares]
-        # reg_global_grad_norm = tf.sqrt(tf.add_n(reg_grad_squares))
-        # reg_names_to_norms = dict(zip(reg_grad_norms_names, reg_grad_norms))
+        if self.log_gradients:
+            # Calc additional grad stats
+            # REG GRADS
+            # reg_grads = tape.gradient(tf.add_n(self.losses), self.trainable_variables)
+            # reg_grad_norms_names = ["grad_norm/reg_"+g.name for g in self.trainable_variables]
+            # reg_grad_squares = [tf.reduce_sum(tf.square(g)) for g in reg_grads]
+            # reg_grad_norms = [tf.sqrt(g) for g in reg_grad_squares]
+            # reg_global_grad_norm = tf.sqrt(tf.add_n(reg_grad_squares))
+            # reg_names_to_norms = dict(zip(reg_grad_norms_names, reg_grad_norms))
 
-        # output["global_reg_grad_norm"] =  reg_global_grad_norm
-        # output.update(reg_names_to_norms)
+            # output["global_reg_grad_norm"] =  reg_global_grad_norm
+            # output.update(reg_names_to_norms)
 
-        # TOTAL GRADS
-        # grad_norms_names = ["grad_norm/" +
-        #                     g.name for g in self.trainable_variables]
-        # grad_avgs_names = ["grad_avg/"+g.name for g in self.trainable_variables]
-        # grad_squares = [tf.reduce_sum(tf.square(g)) for g in grads]
-        # grad_avgs = [tf.reduce_mean(g) for g in grads]
-        # grad_norms = [tf.sqrt(g) for g in grad_squares]
+            # TOTAL GRADS
+            # grad_norms_names = ["grad_norm/" +
+            #                     g.name for g in self.trainable_variables]
+            # grad_avgs_names = ["grad_avg/"+g.name for g in self.trainable_variables]
+            # grad_squares = [tf.reduce_sum(tf.square(g)) for g in grads]
+            # grad_avgs = [tf.reduce_mean(g) for g in grads]
+            # grad_norms = [tf.sqrt(g) for g in grad_squares]
 
-        # global_grad_norm = tf.sqrt(tf.add_n(grad_squares))
-        # names_to_norms = dict(zip(grad_norms_names, grad_norms))
-        # names_to_avgs = dict(zip(grad_avgs_names, grad_avgs))
+            # global_grad_norm = tf.sqrt(tf.add_n(grad_squares))
+            # names_to_norms = dict(zip(grad_norms_names, grad_norms))
+            # names_to_avgs = dict(zip(grad_avgs_names, grad_avgs))
 
-        # Update output dict
-        # output["global_grad_norm"] = global_grad_norm
-        # output.update(names_to_norms)
-        # output.update(names_to_avgs)
+            # Update output dict
+            # output["global_grad_norm"] = global_grad_norm
+            # output.update(names_to_norms)
+            # output.update(names_to_avgs)
 
         return output
-
-
-def custom_loader(model, checkpoint_path):
-    # Load the weights from the checkpoint
-    checkpoint = tf.train.Checkpoint(model=model)
-    checkpoint.restore(checkpoint_path).expect_partial()
-
-    # Get a list of all model's variables
-    model_vars = model.variables
-
-    # Iterate over the variables
-    for var in model_vars:
-        # Get the name of the current variable
-        var_name = var.name
-
-        # Skip the loading of certain variables based on their name
-        if "wx" in var_name:
-            continue
-
-        # Load the value of the variable
-        value = checkpoint.get_variable_value(var_name)
-        var.assign(value)
 
 
 def get_default_layer_options_from_options(options):

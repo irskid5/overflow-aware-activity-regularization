@@ -801,6 +801,7 @@ class OARModel(tf.keras.models.Model):
             # output["global_grad_norm"] = global_grad_norm
             # output.update(names_to_norms)
             # output.update(names_to_avgs)
+            pass
 
         return output
 

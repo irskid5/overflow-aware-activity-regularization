@@ -29,13 +29,13 @@ python main.py
 main.py                 # Entry point, training loops, four-step quantization
 mnist_rnn_model.py      # Model architecture (QRNN + Dense layers)
 quantization.py         # TernarizationWithThreshold quantizer
-utils/model_utils.py    # QRNNWithOAR, QDenseWithOAR, OAR1/OAR2 regularizers
+utils/model_utils.py    # TrackedActivation, Downsampling, OARModel, OAR1/OAR2
 export_mnist.py         # Preprocess MNIST for TFHE inference
 export_mnist_weights_h5.py  # Export weights to HDF5
 ```
 
 **Model Structure:**
-- Input → Ternarize (optional) → QRNN_0 → TimeReduction → QRNN_1 → Flatten → DENSE_0 → DENSE_OUT
+- Input → Ternarize (optional) → QRNN_0 → Downsampling → QRNN_1 → Flatten → DENSE_0 → DENSE_OUT
 
 ## Key Concepts
 
@@ -56,8 +56,8 @@ options = {
     "tᵢ": 0.7,             # Input ternarization threshold
     "s": 4.0,              # Gradient scaling factor
     "oar": {
-        "lm": 1e-4,        # OAR regularization rate
-        "precision": 6,    # Bit precision (2^precision modulus)
+        "oar_lambda": 1e-4,  # OAR regularization rate
+        "omega": 6,          # Bit precision (2^omega modulus)
     },
     "quantize": False,     # Enable weight ternarization
 }

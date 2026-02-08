@@ -87,3 +87,54 @@ def test_tracked_activation_applies_activation():
     x = tf.constant([-1.0, 2.0])
     out = layer(x)
     tf.debugging.assert_equal(out, tf.constant([0.0, 2.0]))
+
+
+from oar.quantizers import TernarizationWithThreshold, ternarize_tensor_with_threshold
+
+
+def test_ternarize_tensor_with_threshold_unchanged():
+    x = tf.constant([-2.0, -0.1, 0.1, 2.0])
+    out = ternarize_tensor_with_threshold(x, theta=0.5)
+    tf.debugging.assert_equal(out, tf.constant([-1.0, 0.0, 0.0, 1.0]))
+
+
+def test_ternarization_get_config_returns_all_params():
+    """Test that get_config returns ALL constructor parameters (bug fix)."""
+    quantizer = TernarizationWithThreshold(
+        threshold=0.5,
+        qnoise_factor=0.8,
+        var_name="test_var",
+        use_ste=False,
+        use_variables=True,
+        name="test_quant",
+    )
+    config = quantizer.get_config()
+    assert config["threshold"] == 0.5
+    assert config["qnoise_factor"] == 0.8
+    assert config["var_name"] == "test_var"
+    assert config["use_ste"] == False
+    assert config["use_variables"] == True
+
+
+def test_ternarization_serialization_roundtrip():
+    original = TernarizationWithThreshold(
+        threshold=0.3,
+        qnoise_factor=0.9,
+        use_ste=True,
+    )
+    config = original.get_config()
+    restored = TernarizationWithThreshold.from_config(config)
+    assert restored.threshold == original.threshold
+    assert restored.qnoise_factor == original.qnoise_factor
+    assert restored.use_ste == original.use_ste
+
+
+def test_ternarization_call_produces_ternary():
+    quantizer = TernarizationWithThreshold(threshold=0.5)
+    x = tf.constant([-2.0, -0.1, 0.1, 2.0])
+    out = quantizer(x)
+    # With STE, output should be ternary values
+    unique_vals = tf.unique(out)[0]
+    # Should only have values in {-1, 0, 1}
+    for val in unique_vals.numpy():
+        assert val in [-1.0, 0.0, 1.0]

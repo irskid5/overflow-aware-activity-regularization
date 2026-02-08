@@ -92,3 +92,14 @@ def test_perform_step_returns_checkpoint_path():
     )
     assert isinstance(result, str)
     assert "checkpoints" in result
+
+
+def test_perform_step_accepts_run_dir_parameter():
+    """Test that perform_step_in_four_step_quant accepts run_dir parameter."""
+    from experiments.mnist.config import perform_step_in_four_step_quant
+    import inspect
+
+    sig = inspect.signature(perform_step_in_four_step_quant)
+    param_names = list(sig.parameters.keys())
+
+    assert "run_dir" in param_names, "Should accept run_dir parameter"

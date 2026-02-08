@@ -131,7 +131,12 @@ def get_model_parameter_stats(pretrained_weights: str | None, options, layer_opt
     return tern_params
 
 
-def perform_step_in_four_step_quant(step: int, pretrained_weights: str | None, options) -> str:
+def perform_step_in_four_step_quant(
+    step: int,
+    pretrained_weights: str | None,
+    options: dict,
+    run_dir: str | None = None,
+) -> str:
     """Performs a step in the four-step quantization procedure.
 
     Steps:
@@ -144,6 +149,7 @@ def perform_step_in_four_step_quant(step: int, pretrained_weights: str | None, o
         step: Step number (1-4)
         pretrained_weights: Path to checkpoints folder for initialization
         options: Overall options dict
+        run_dir: Optional run directory. If not provided, train() creates one.
 
     Returns:
         Path to checkpoints folder of the trained model
@@ -218,6 +224,8 @@ def perform_step_in_four_step_quant(step: int, pretrained_weights: str | None, o
         pretrained_weights=pretrained_weights,
         options=options,
         layer_options=layer_options,
+        step=step,
+        run_dir=run_dir,
     )
 
 

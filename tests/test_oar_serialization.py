@@ -48,3 +48,42 @@ def test_compute_oar_metric_unchanged():
     x = tf.constant([[0.0, 0.0]])
     out = compute_oar_metric(x, k=8, a=1.0)
     tf.debugging.assert_near(out, tf.constant([1.0]))
+
+
+from oar.activations import sign_ste_tanh, mod_sign, TrackedActivation
+
+
+def test_sign_ste_tanh_unchanged():
+    x = tf.constant([-2.0, 0.0, 2.0])
+    out = sign_ste_tanh(x)
+    tf.debugging.assert_equal(out, tf.constant([-1.0, 1.0, 1.0]))
+
+
+def test_mod_sign_unchanged():
+    x = tf.constant([-1.0, 1.0, 5.0])
+    out = mod_sign(x, num_bits=3)
+    tf.debugging.assert_equal(out, tf.constant([-1.0, 1.0, -1.0]))
+
+
+def test_tracked_activation_get_config_fixed():
+    """Test that TrackedActivation.get_config() no longer references alpha_init."""
+    layer = TrackedActivation(activation=tf.nn.relu, name="test_act")
+    config = layer.get_config()
+    # Should have activation and name, NOT alpha_init
+    assert "activation" in config or "name" in config
+    assert "alpha_init" not in config
+
+
+def test_tracked_activation_serialization_roundtrip():
+    original = TrackedActivation(activation="relu", name="test")
+    config = original.get_config()
+    # Should not raise
+    restored = TrackedActivation.from_config(config)
+    assert restored is not None
+
+
+def test_tracked_activation_applies_activation():
+    layer = TrackedActivation(activation=tf.nn.relu)
+    x = tf.constant([-1.0, 2.0])
+    out = layer(x)
+    tf.debugging.assert_equal(out, tf.constant([0.0, 2.0]))

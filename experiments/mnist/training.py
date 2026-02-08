@@ -9,7 +9,7 @@ from oar import ReservoirHistogramCallback, reset_stat_weights
 from experiments.mnist.data import get_datasets
 from experiments.mnist.model import get_model
 
-RUNS_DIR = "runs/"
+RUNS_DIR = "runs/mnist/"
 TB_LOGS_DIR = "logs/tensorboard/"
 CKPT_DIR = "checkpoints/"
 RECORD_CKPTS = True

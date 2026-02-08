@@ -15,6 +15,18 @@ CKPT_DIR = "checkpoints/"
 RECORD_CKPTS = True
 
 
+def create_run_dir() -> str:
+    """Creates a new timestamped run directory.
+
+    Returns:
+        Path to the created run directory (with trailing slash)
+    """
+    now = datetime.now()
+    run_dir = RUNS_DIR + now.strftime("%Y%m%d-%H%M%S") + "/"
+    os.makedirs(run_dir, exist_ok=True)
+    return run_dir
+
+
 def configure_environment():
     """Configures the environment by selecting the datatype and device strategy.
 
@@ -46,7 +58,13 @@ def configure_environment():
     return strategy, dtype
 
 
-def train(pretrained_weights: str | None, options, layer_options) -> str:
+def train(
+    pretrained_weights: str | None,
+    options: dict,
+    layer_options: dict,
+    step: int | None = None,
+    run_dir: str | None = None,
+) -> str:
     """Runs training for a number of epochs.
 
     Loads pretrained weights, builds model, and runs training.
@@ -56,16 +74,28 @@ def train(pretrained_weights: str | None, options, layer_options) -> str:
         pretrained_weights: Path to checkpoints folder for initialization
         options: Training options dict
         layer_options: Per-layer options dict
+        step: Optional step number for four-step quantization. When provided,
+            creates a step_N subdirectory within run_dir.
+        run_dir: Optional path to run directory. If None, creates a new
+            timestamped directory using create_run_dir().
 
     Returns:
         Path to checkpoints folder of trained model
     """
     strategy, _ = configure_environment()
 
-    now = datetime.now()
-    RUN_DIR = (
-        RUNS_DIR + now.strftime("%Y%m") + "/" + now.strftime("%Y%m%d-%H%M%S") + "/"
-    )
+    # Determine run directory
+    if run_dir is None:
+        run_dir = create_run_dir()
+
+    # Determine output directory (with optional step subdirectory)
+    if step is not None:
+        output_dir = os.path.join(run_dir, f"step_{step}") + "/"
+    else:
+        output_dir = run_dir
+
+    # Ensure output directory exists
+    os.makedirs(output_dir, exist_ok=True)
 
     BATCHSIZE = options["batch_size"]
     ds_train, ds_val, ds_test = get_datasets(
@@ -89,11 +119,11 @@ def train(pretrained_weights: str | None, options, layer_options) -> str:
 
     # TensorBoard callback
     tb_callback = tf.keras.callbacks.TensorBoard(
-        log_dir=(RUN_DIR + TB_LOGS_DIR),
+        log_dir=(output_dir + TB_LOGS_DIR),
         histogram_freq=1,
         update_freq="epoch",
     )
-    reservoir_cb = ReservoirHistogramCallback(log_dir=(RUN_DIR + TB_LOGS_DIR))
+    reservoir_cb = ReservoirHistogramCallback(log_dir=(output_dir + TB_LOGS_DIR))
 
     # Learning rate schedule
     lr_callback = tf.keras.callbacks.LearningRateScheduler(
@@ -105,7 +135,7 @@ def train(pretrained_weights: str | None, options, layer_options) -> str:
 
     if RECORD_CKPTS:
         ckpt_callback = tf.keras.callbacks.ModelCheckpoint(
-            filepath=(RUN_DIR + CKPT_DIR),
+            filepath=(output_dir + CKPT_DIR),
             save_weights_only=True,
             save_best_only=False,
             monitor="val_accuracy",
@@ -135,4 +165,4 @@ def train(pretrained_weights: str | None, options, layer_options) -> str:
     except Exception as e:
         print(e)
 
-    return RUN_DIR + CKPT_DIR
+    return output_dir + CKPT_DIR

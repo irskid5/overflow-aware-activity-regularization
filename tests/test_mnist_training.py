@@ -1,5 +1,8 @@
 """Tests for experiments/mnist/training.py."""
 
+import os
+import tempfile
+
 import tensorflow as tf
 
 
@@ -16,3 +19,40 @@ def test_configure_environment_returns_one_device_strategy():
 
     strategy, _ = configure_environment()
     assert isinstance(strategy, tf.distribute.OneDeviceStrategy)
+
+
+def test_train_accepts_step_and_run_dir_parameters():
+    """Test that train() accepts optional step and run_dir parameters."""
+    from experiments.mnist.training import train
+    import inspect
+
+    sig = inspect.signature(train)
+    param_names = list(sig.parameters.keys())
+
+    assert "step" in param_names, "train() should accept 'step' parameter"
+    assert "run_dir" in param_names, "train() should accept 'run_dir' parameter"
+
+
+def test_train_creates_step_subdir_when_step_provided():
+    """Test that train() creates step_N subdirectory when step is provided."""
+    from experiments.mnist.training import train
+    from experiments.mnist.config import MNIST_OPTIONS, get_default_layer_options
+    import copy
+
+    options = copy.deepcopy(MNIST_OPTIONS)
+    options["epochs"] = 0  # Skip actual training
+    layer_options = get_default_layer_options(options)
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        run_dir = tmpdir + "/test_run/"
+        result = train(
+            pretrained_weights=None,
+            options=options,
+            layer_options=layer_options,
+            step=1,
+            run_dir=run_dir,
+        )
+
+        # Should create step_1 subdirectory
+        assert os.path.exists(os.path.join(run_dir, "step_1"))
+        assert "step_1/checkpoints" in result

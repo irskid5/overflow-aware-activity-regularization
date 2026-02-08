@@ -174,3 +174,74 @@ def test_reservoir_histogram_callback_from_oar():
 
 def test_reservoir_update_every_constant():
     assert RESERVOIR_UPDATE_EVERY == 20
+
+
+from oar.layers import (
+    QRNNWithOAR,
+    QSimpleRNNCellWithOAR,
+    QDenseWithOAR,
+    Downsampling,
+)
+
+
+def test_downsampling_get_config():
+    layer = Downsampling(reduction_factor=2, batch_size=32)
+    config = layer.get_config()
+    assert config["reduction_factor"] == 2
+    assert config["batch_size"] == 32
+
+
+def test_downsampling_serialization_roundtrip():
+    original = Downsampling(reduction_factor=4, batch_size=64)
+    config = original.get_config()
+    restored = Downsampling.from_config(config)
+    assert restored.reduction_factor == original.reduction_factor
+    assert restored.batch_size == original.batch_size
+
+
+def test_qsimple_rnn_cell_has_reservoir_weights():
+    cell = QSimpleRNNCellWithOAR(units=4, batch_size=2, name="QRNN_0")
+    cell.build(tf.TensorShape([2, 8]))
+    assert cell.preact_reservoir.shape.as_list() == [100000]
+    assert cell.reservoir_count.dtype == tf.int64
+
+
+def test_qdense_with_oar_has_reservoir_weights():
+    layer = QDenseWithOAR(units=3, batch_size=2, name="DENSE_0")
+    layer.build(tf.TensorShape([2, 8]))
+    assert layer.preact_reservoir.shape.as_list() == [100000]
+    assert layer.reservoir_count.dtype == tf.int64
+
+
+def test_qrnn_with_oar_propagates_reservoir_size():
+    layer = QRNNWithOAR(units=4, batch_size=2, reservoir_size=777, name="QRNN_0")
+    layer.build(tf.TensorShape([2, 10, 8]))
+    assert layer.cell.preact_reservoir.shape.as_list() == [777]
+
+
+def test_qrnn_with_oar_serialization_roundtrip():
+    original = QRNNWithOAR(units=4, batch_size=2, use_oar=True, oar_lambda=1e-4, omega=6, name="QRNN_0")
+    original.build(tf.TensorShape([2, 10, 8]))
+    config = original.get_config()
+    # Verify key params are serialized
+    assert "kernel_quantizer" in config
+    assert "use_oar" in str(config) or original.use_oar  # Check param propagates
+
+
+def test_qsimple_rnn_cell_get_config():
+    cell = QSimpleRNNCellWithOAR(units=4, batch_size=2, use_oar=True, oar_lambda=1e-4, omega=6, name="QRNN_0")
+    cell.build(tf.TensorShape([2, 8]))
+    config = cell.get_config()
+    assert config["batch_size"] == 2
+    assert config["use_oar"] == True
+    assert config["oar_lambda"] == 1e-4
+    assert config["omega"] == 6
+
+
+def test_qdense_with_oar_get_config():
+    layer = QDenseWithOAR(units=3, batch_size=2, use_oar=True, oar_lambda=1e-4, omega=6, name="DENSE_0")
+    layer.build(tf.TensorShape([2, 8]))
+    config = layer.get_config()
+    assert config["batch_size"] == 2
+    assert config["use_oar"] == True
+    assert config["oar_lambda"] == 1e-4

@@ -212,3 +212,56 @@ def test_perform_four_step_quant_saves_initial_config():
 
         finally:
             training_module.RUNS_DIR = original_runs_dir
+
+
+def test_perform_four_step_quant_creates_output_log():
+    """Test that experiment-level output.log is created."""
+    from experiments.mnist.config import perform_four_step_quant, MNIST_OPTIONS
+    import copy
+    import os
+    import tempfile
+    from unittest.mock import patch
+
+    import experiments.mnist.training as training_module
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        original_runs_dir = training_module.RUNS_DIR
+        training_module.RUNS_DIR = tmpdir + "/"
+
+        def mock_perform_step(step, pretrained_weights, options, run_dir=None):
+            """Mock that creates step directories and prints step markers."""
+            print(f"PERFORMING STEP {step}/4 FROM FOUR-STEP QUANTIZATION PROCESS")
+            if run_dir is not None:
+                step_dir = os.path.join(run_dir, f"step_{step}")
+                os.makedirs(step_dir, exist_ok=True)
+                ckpt_dir = os.path.join(step_dir, "checkpoints/")
+                os.makedirs(ckpt_dir, exist_ok=True)
+                return ckpt_dir
+            return f"{tmpdir}/step_{step}/checkpoints/"
+
+        try:
+            options = copy.deepcopy(MNIST_OPTIONS)
+            options["epochs"] = 0
+
+            with patch(
+                "experiments.mnist.config.perform_step_in_four_step_quant",
+                side_effect=mock_perform_step,
+            ):
+                result = perform_four_step_quant(options)
+
+            # Get the run directory
+            run_dir = os.path.dirname(os.path.dirname(result.rstrip("/")))
+
+            # Experiment-level log should exist
+            log_path = os.path.join(run_dir, "output.log")
+            assert os.path.exists(log_path), "Experiment output.log should exist"
+
+            with open(log_path) as f:
+                content = f.read()
+
+            # Should contain output from all steps
+            assert "STEP 1/4" in content
+            assert "STEP 4/4" in content
+
+        finally:
+            training_module.RUNS_DIR = original_runs_dir

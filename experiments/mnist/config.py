@@ -263,7 +263,7 @@ def perform_four_step_quant(options: dict) -> str:
     Returns:
         Path to checkpoint folder of final step parameters
     """
-    from experiments.mnist.training import create_run_dir
+    from experiments.mnist.training import create_run_dir, tee_output
 
     # Create shared run directory for all steps
     run_dir = create_run_dir()
@@ -271,13 +271,18 @@ def perform_four_step_quant(options: dict) -> str:
     # Save initial experiment config (before any mutations)
     _save_experiment_config(run_dir, options)
 
-    pretrained_weights = None
-    for step in range(1, 5):
-        pretrained_weights = perform_step_in_four_step_quant(
-            step=step,
-            pretrained_weights=pretrained_weights,
-            options=options,
-            run_dir=run_dir,
-        )
-        options["epochs"] = 1000
+    # Log all output to experiment-level log file
+    log_path = os.path.join(run_dir, "output.log")
+
+    with tee_output(log_path):
+        pretrained_weights = None
+        for step in range(1, 5):
+            pretrained_weights = perform_step_in_four_step_quant(
+                step=step,
+                pretrained_weights=pretrained_weights,
+                options=options,
+                run_dir=run_dir,
+            )
+            options["epochs"] = 1000
+
     return pretrained_weights

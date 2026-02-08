@@ -20,6 +20,7 @@ from oar.layers import (
     QDenseWithOAR,
     Downsampling,
 )
+from oar.training import get_default_layer_options_from_options, OARModel
 
 __version__ = "0.1.0"
 
@@ -47,4 +48,7 @@ __all__ = [
     "QSimpleRNNCellWithOAR",
     "QDenseWithOAR",
     "Downsampling",
+    # Training
+    "get_default_layer_options_from_options",
+    "OARModel",
 ]

@@ -245,3 +245,22 @@ def test_qdense_with_oar_get_config():
     assert config["batch_size"] == 2
     assert config["use_oar"] == True
     assert config["oar_lambda"] == 1e-4
+
+
+from oar.training import get_default_layer_options_from_options, OARModel
+
+
+def test_get_default_layer_options_from_oar():
+    options = {
+        "oar": {"omega": 6, "oar_lambda": 1e-4},
+    }
+    layer_options = get_default_layer_options_from_options(options)
+    assert layer_options["QRNN_0"]["oar"]["omega"] == 6
+    assert layer_options["QRNN_0"]["oar"]["oar_lambda"] == 1e-4
+
+
+def test_oar_model_constructs():
+    inputs = tf.keras.layers.Input(shape=(10,))
+    outputs = tf.keras.layers.Dense(5)(inputs)
+    model = OARModel(inputs=inputs, outputs=outputs)
+    assert model is not None

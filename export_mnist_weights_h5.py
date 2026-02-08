@@ -1,5 +1,5 @@
 import os
-from utils.model_utils import get_default_layer_options_from_options
+from utils.model_utils import get_default_layer_options_from_options, reset_stat_weights
 from mnist_rnn_model import get_model
 
 
@@ -18,16 +18,7 @@ def export_mnist_weights(pretrained_weights: str, options):
         print("Restored pretrained weights from {}.".format(pretrained_weights))
 
     # Reset the stat variables
-    weights = model.get_weights()
-    weights_to_discard = []
-    for i in range(len(weights)):
-        if (
-            "/w" in model.weights[i].name
-            or "/x" in model.weights[i].name
-            or "preacts" in model.weights[i].name
-        ):
-            weights[i] = 0 * weights[i]
-    model.set_weights(weights)
+    reset_stat_weights(model)
 
     h5_dir = pretrained_weights + "hdf5/"
     if not os.path.exists(h5_dir):

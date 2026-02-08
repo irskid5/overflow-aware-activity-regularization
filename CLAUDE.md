@@ -99,6 +99,7 @@ runs/<YYYYMM>/<YYYYMMDD-HHMMSS>/
 - Seed is fixed (`tf.random.set_seed(1997)`) for reproducibility
 - `RECORD_CKPTS = True` controls checkpoint saving (edit in main.py)
 - Batch size must match between training and model construction (used for stat tracking weights)
+- Pre-activation histograms use reservoir sampling to cap memory usage
 - Unicode chars in code: `τ` (tau), `tᵢ` (t_i) - ensure UTF-8 encoding
 - QKeras quantizers use STE (straight-through estimator) by default
 - **GPU setup**: Use `source activate_gpu.sh` (not just `source .venv/bin/activate`) to set `LD_LIBRARY_PATH` and `XLA_FLAGS` for pip-installed CUDA libraries

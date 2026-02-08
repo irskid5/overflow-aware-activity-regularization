@@ -3,6 +3,8 @@ from utils.model_utils import (
     mod_sign,
     sign_ste_tanh,
     get_default_layer_options_from_options,
+    ReservoirHistogramCallback,
+    reset_stat_weights,
 )
 from export_mnist_weights_h5 import export_mnist_weights
 from export_mnist import extract_ternarized_mnist_test_dataset
@@ -176,15 +178,7 @@ def train(pretrained_weights: str | None, options, layer_options) -> str:
             print("Restored pretrained weights from {}.".format(pretrained_weights))
 
         # Reset the stat variables
-        weights = model.get_weights()
-        for i in range(len(weights)):
-            if (
-                "/w" in model.weights[i].name
-                or "/x" in model.weights[i].name
-                or "preacts" in model.weights[i].name
-            ):
-                weights[i] = 0 * weights[i]
-        model.set_weights(weights)
+        reset_stat_weights(model)
 
         model.compile(
             optimizer=tf.keras.optimizers.Adam(learning_rate=options["learning_rate"]),
@@ -200,6 +194,7 @@ def train(pretrained_weights: str | None, options, layer_options) -> str:
         histogram_freq=1,
         update_freq="epoch",
     )
+    reservoir_cb = ReservoirHistogramCallback(log_dir=(RUN_DIR + TB_LOGS_DIR))
 
     # Add a learning rate schedule
     lr_callback = tf.keras.callbacks.LearningRateScheduler(
@@ -230,7 +225,7 @@ def train(pretrained_weights: str | None, options, layer_options) -> str:
                 ds_train,
                 epochs=options["epochs"],
                 validation_data=ds_val,
-                callbacks=[tb_callback, ckpt_callback, lr_callback],
+                callbacks=[tb_callback, reservoir_cb, ckpt_callback, lr_callback],
                 verbose=1,
             )
         except Exception as e:

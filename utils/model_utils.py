@@ -8,6 +8,112 @@ from quantization import *
 from qkeras import *
 
 
+def _reservoir_update(reservoir, count, new_values, reservoir_size, seed):
+    """
+    Vitter's Algorithm R for reservoir sampling.
+
+    Args:
+        reservoir: Current reservoir tensor [reservoir_size]
+        count: Total samples seen so far (int64 scalar)
+        new_values: New values to potentially add (any shape, will be flattened)
+        reservoir_size: Size of reservoir (int)
+        seed: Random seed for reproducibility
+
+    Returns:
+        (updated_reservoir, updated_count)
+    """
+    flat = tf.reshape(new_values, [-1])
+    n = tf.size(flat, out_type=tf.int64)
+    reservoir_size_i64 = tf.cast(reservoir_size, tf.int64)
+
+    # Phase 1: Fill initial slots if reservoir not full
+    capacity_left = reservoir_size_i64 - count
+    fill_n = tf.minimum(n, tf.maximum(capacity_left, tf.constant(0, dtype=tf.int64)))
+
+    indices = tf.reshape(tf.range(count, count + fill_n, dtype=tf.int64), [-1, 1])
+    reservoir = tf.tensor_scatter_nd_update(reservoir, indices, flat[:fill_n])
+    new_count = count + fill_n
+
+    # Phase 2: Reservoir sampling for values beyond capacity
+    remaining = flat[fill_n:]
+    remaining_n = tf.size(remaining, out_type=tf.int64)
+
+    def do_sampling():
+        nonlocal reservoir, new_count
+        # For element i (0-indexed in remaining), total index is new_count + i
+        # Accept with probability reservoir_size / (new_count + i + 1)
+        # If accepted, replace random slot in reservoir
+        i_range = tf.range(remaining_n, dtype=tf.int64)
+        total_idx = new_count + i_range + 1  # 1-indexed for probability calc
+
+        # Draw random values to decide acceptance and slot
+        rng = tf.random.stateless_uniform(
+            shape=[remaining_n, 2],
+            seed=[seed, tf.cast(new_count, tf.int32)],
+            dtype=tf.float64,
+        )
+        accept_threshold = tf.cast(reservoir_size_i64, tf.float64) / tf.cast(
+            total_idx, tf.float64
+        )
+        accept_mask = rng[:, 0] < accept_threshold
+
+        # For accepted values, pick slot uniformly
+        slots = tf.cast(
+            rng[:, 1] * tf.cast(reservoir_size_i64, tf.float64), tf.int64
+        )
+        slots = tf.minimum(slots, reservoir_size_i64 - 1)  # Clamp to valid range
+
+        accepted_slots = tf.boolean_mask(slots, accept_mask)
+        accepted_values = tf.boolean_mask(remaining, accept_mask)
+
+        indices = tf.reshape(accepted_slots, [-1, 1])
+        return (
+            tf.tensor_scatter_nd_update(reservoir, indices, accepted_values),
+            new_count + remaining_n,
+        )
+
+    reservoir, new_count = tf.cond(
+        remaining_n > 0,
+        do_sampling,
+        lambda: (reservoir, new_count),
+    )
+
+    return reservoir, new_count
+
+
+def reset_stat_weights(model):
+    """Zero out stat-tracking weights (wx, preact_reservoir, reservoir_count)."""
+    weights = model.get_weights()
+    for i in range(len(weights)):
+        name = model.weights[i].name
+        if any(pattern in name for pattern in ["/w", "/x", "preact_reservoir", "reservoir_count"]):
+            weights[i] = 0 * weights[i]
+    model.set_weights(weights)
+
+
+class ReservoirHistogramCallback(tf.keras.callbacks.Callback):
+    """Logs preact_reservoir histograms to TensorBoard at epoch end."""
+
+    def __init__(self, log_dir, reservoir_weight_name="preact_reservoir"):
+        super().__init__()
+        self.log_dir = log_dir
+        self.reservoir_weight_name = reservoir_weight_name
+        self.writer = None
+
+    def set_model(self, model):
+        super().set_model(model)
+        self.writer = tf.summary.create_file_writer(self.log_dir)
+
+    def on_epoch_end(self, epoch, logs=None):
+        if self.writer is None:
+            return
+        with self.writer.as_default():
+            for weight in self.model.weights:
+                if self.reservoir_weight_name in weight.name:
+                    tf.summary.histogram(weight.name, weight, step=epoch)
+            self.writer.flush()
+
+
 class QRNNWithOAR(tf.keras.layers.RNN):
     def __init__(
         self,
@@ -30,6 +136,7 @@ class QRNNWithOAR(tf.keras.layers.RNN):
         oar_lambda=0,
         omega=32,
         s=1.0,
+        reservoir_size=100000,
         unroll=False,
         name="",
         **kwargs
@@ -46,6 +153,7 @@ class QRNNWithOAR(tf.keras.layers.RNN):
 
         # Gradient scaling
         self.s = s
+        self.reservoir_size = reservoir_size
 
         # These are flags that require rnn unrolling
         to_unroll = unroll or use_oar
@@ -68,6 +176,7 @@ class QRNNWithOAR(tf.keras.layers.RNN):
                 oar_lambda=oar_lambda,
                 omega=omega,
                 s=s,
+                reservoir_size=reservoir_size,
                 name=name,
             )
             if not cell
@@ -188,8 +297,8 @@ class QSimpleRNNCellWithOAR(QSimpleRNNCell):
     def __init__(
         self,
         units,
-        activation=None,
         batch_size=512,
+        activation=None,
         use_bias=False,
         kernel_initializer="glorot_uniform",
         recurrent_initializer="orthogonal",
@@ -208,6 +317,7 @@ class QSimpleRNNCellWithOAR(QSimpleRNNCell):
         oar_lambda=0,
         omega=32,
         s=1,
+        reservoir_size=100000,
         **kwargs
     ):
 
@@ -243,6 +353,7 @@ class QSimpleRNNCellWithOAR(QSimpleRNNCell):
 
         # Get batch_size
         self.batch_size = batch_size
+        self.reservoir_size = reservoir_size
 
     def build(self, input_shape):
         super(QSimpleRNNCellWithOAR, self).build(input_shape)
@@ -281,10 +392,17 @@ class QSimpleRNNCellWithOAR(QSimpleRNNCell):
             trainable=False,
         )
 
-        self.preacts = self.add_weight(
-            name="preacts",
-            shape=[self.batch_size, self.units],
+        self.preact_reservoir = self.add_weight(
+            name="preact_reservoir",
+            shape=[self.reservoir_size],
             dtype=self.kernel.dtype,
+            initializer="zeros",
+            trainable=False,
+        )
+        self.reservoir_count = self.add_weight(
+            name="reservoir_count",
+            shape=[],
+            dtype=tf.int64,
             initializer="zeros",
             trainable=False,
         )
@@ -334,7 +452,16 @@ class QSimpleRNNCellWithOAR(QSimpleRNNCell):
         output = h / s + h_2 / s + tf.stop_gradient(-h / s - h_2 / s + h + h_2)
 
         # Log pre-activation distribution
-        self.preacts.assign(0.90 * self.preacts + 0.10 * (h + h_2))
+        preact = h + h_2
+        updated_reservoir, updated_count = _reservoir_update(
+            reservoir=self.preact_reservoir,
+            count=tf.cast(self.reservoir_count, tf.int64),
+            new_values=preact,
+            reservoir_size=self.reservoir_size,
+            seed=1997,
+        )
+        self.preact_reservoir.assign(updated_reservoir)
+        self.reservoir_count.assign(updated_count)
 
         # Compute activation
         if self.activation is not None:
@@ -370,6 +497,7 @@ class QDenseWithOAR(QDense):
         oar_lambda=0,
         omega=32,
         s=1,
+        reservoir_size=100000,
         **kwargs
     ):
 
@@ -385,6 +513,7 @@ class QDenseWithOAR(QDense):
 
         # Get batch size
         self.batch_size = batch_size
+        self.reservoir_size = reservoir_size
 
         super(QDenseWithOAR, self).__init__(
             units=units,
@@ -425,10 +554,17 @@ class QDenseWithOAR(QDense):
             trainable=False,
         )
 
-        self.preacts = self.add_weight(
-            name="preacts",
-            shape=[self.batch_size, self.units],
+        self.preact_reservoir = self.add_weight(
+            name="preact_reservoir",
+            shape=[self.reservoir_size],
             dtype=self.kernel.dtype,
+            initializer="zeros",
+            trainable=False,
+        )
+        self.reservoir_count = self.add_weight(
+            name="reservoir_count",
+            shape=[],
+            dtype=tf.int64,
             initializer="zeros",
             trainable=False,
         )
@@ -471,7 +607,15 @@ class QDenseWithOAR(QDense):
         )
 
         # Log pre-activation distribution
-        self.preacts.assign(0.90 * self.preacts + 0.10 * h)
+        updated_reservoir, updated_count = _reservoir_update(
+            reservoir=self.preact_reservoir,
+            count=tf.cast(self.reservoir_count, tf.int64),
+            new_values=h,
+            reservoir_size=self.reservoir_size,
+            seed=1997,
+        )
+        self.preact_reservoir.assign(updated_reservoir)
+        self.reservoir_count.assign(updated_count)
 
         output = h
         if self.activation is not None:

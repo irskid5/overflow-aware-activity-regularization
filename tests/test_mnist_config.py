@@ -4,6 +4,26 @@ import pytest
 import tensorflow as tf
 
 
+def test_make_oar_config_returns_expected_structure():
+    """Test that _make_oar_config returns properly structured dict."""
+    from experiments.mnist.config import _make_oar_config
+
+    result = _make_oar_config(use=True, oar_lambda=1e-3, omega=8)
+
+    assert result == {"use": True, "oar_lambda": 1e-3, "omega": 8}
+
+
+def test_make_oar_config_with_defaults():
+    """Test _make_oar_config with different values."""
+    from experiments.mnist.config import _make_oar_config
+
+    result = _make_oar_config(use=False, oar_lambda=0.0, omega=6)
+
+    assert result["use"] is False
+    assert result["oar_lambda"] == 0.0
+    assert result["omega"] == 6
+
+
 def test_mnist_options_has_required_keys():
     from experiments.mnist.config import MNIST_OPTIONS
 

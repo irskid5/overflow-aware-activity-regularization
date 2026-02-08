@@ -36,7 +36,25 @@ ENLARGED_MNIST_OPTIONS = {
 }
 
 
-def get_default_layer_options(options):
+def _make_oar_config(use: bool, oar_lambda: float, omega: int) -> dict:
+    """Create OAR configuration dict.
+
+    Args:
+        use: Whether to enable OAR regularization
+        oar_lambda: OAR regularization rate
+        omega: Bit precision (2^omega modulus)
+
+    Returns:
+        Dict with OAR configuration
+    """
+    return {
+        "use": use,
+        "oar_lambda": oar_lambda,
+        "omega": omega,
+    }
+
+
+def get_default_layer_options(options: dict) -> dict:
     """Build default layer_options dict from high-level options.
 
     Creates per-layer configuration for MNIST RNN architecture.
@@ -48,26 +66,22 @@ def get_default_layer_options(options):
     Returns:
         Dict mapping layer names to their configuration
     """
-    def make_oar_config(use: bool = False, oar_lambda: float | None = None):
-        return {
-            "use": use,
-            "oar_lambda": oar_lambda if oar_lambda is not None else options["oar"]["oar_lambda"],
-            "omega": options["oar"]["omega"],
-        }
+    oar_lambda = options["oar"]["oar_lambda"]
+    omega = options["oar"]["omega"]
 
     result = {"INPUT": {"ternarize": False}}
 
     for name in ["QRNN_0", "QRNN_1", "DENSE_0"]:
         result[name] = {
             "activation": tf.keras.activations.tanh,
-            "oar": make_oar_config(),
+            "oar": _make_oar_config(use=False, oar_lambda=oar_lambda, omega=omega),
             "s": 1.0,
             "τ": 0.0,
         }
 
     result["DENSE_OUT"] = {
         "activation": tf.keras.activations.softmax,
-        "oar": make_oar_config(use=True, oar_lambda=0.0),
+        "oar": _make_oar_config(use=True, oar_lambda=0.0, omega=omega),
         "s": 1.0,
         "τ": 0.0,
     }
@@ -169,33 +183,29 @@ def perform_step_in_four_step_quant(step: int, pretrained_weights: str | None, o
             return mod_sign(x, num_bits=options["oar"]["omega"])
 
     # Adjust layer options
-    def make_oar_config(use: bool, oar_lambda: float):
-        return {
-            "use": use,
-            "oar_lambda": oar_lambda,
-            "omega": options["oar"]["omega"],
-        }
+    oar_lambda = options["oar"]["oar_lambda"]
+    omega = options["oar"]["omega"]
 
     layer_options = {"INPUT": {"ternarize": ternarize_inputs}}
 
     for name in ["QRNN_0", "QRNN_1"]:
         layer_options[name] = {
             "activation": activation,
-            "oar": make_oar_config(oar, options["oar"]["oar_lambda"]),
+            "oar": _make_oar_config(use=oar, oar_lambda=oar_lambda, omega=omega),
             "s": s,
             "τ": t * tern_params[name],
         }
 
     layer_options["DENSE_0"] = {
         "activation": activation,
-        "oar": make_oar_config(oar, options["oar"]["oar_lambda"]),
+        "oar": _make_oar_config(use=oar, oar_lambda=oar_lambda, omega=omega),
         "s": 1.0,
         "τ": t * tern_params["DENSE_0"],
     }
 
     layer_options["DENSE_OUT"] = {
         "activation": tf.keras.activations.softmax,
-        "oar": make_oar_config(use=True, oar_lambda=0.0),
+        "oar": _make_oar_config(use=True, oar_lambda=0.0, omega=omega),
         "s": 1.0,
         "τ": t * tern_params["DENSE_OUT"],
     }

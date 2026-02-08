@@ -1,13 +1,14 @@
 from qkeras import *
 
-from utils.model_utils import (
+from oar import (
     Downsampling,
     QDenseWithOAR,
     QRNNWithOAR,
     OARModel,
     TrackedActivation,
+    TernarizationWithThreshold,
+    ternarize_tensor_with_threshold,
 )
-from quantization import ternarize_tensor_with_threshold, TernarizationWithThreshold
 
 SEED = 1997
 

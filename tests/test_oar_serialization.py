@@ -138,3 +138,39 @@ def test_ternarization_call_produces_ternary():
     # Should only have values in {-1, 0, 1}
     for val in unique_vals.numpy():
         assert val in [-1.0, 0.0, 1.0]
+
+
+import tempfile
+from oar.callbacks import (
+    ReservoirHistogramCallback,
+    _reservoir_update,
+    reset_stat_weights,
+    RESERVOIR_UPDATE_EVERY,
+)
+
+
+def test_reservoir_update_from_oar_callbacks():
+    reservoir = tf.zeros([10], dtype=tf.float32)
+    count = tf.constant(0, dtype=tf.int64)
+    new_vals = tf.constant([1.0, 2.0, 3.0, 4.0], dtype=tf.float32)
+
+    updated, updated_count = _reservoir_update(
+        reservoir=reservoir,
+        count=count,
+        new_values=new_vals,
+        reservoir_size=10,
+        seed=123,
+    )
+
+    tf.debugging.assert_equal(updated_count, tf.constant(4, dtype=tf.int64))
+
+
+def test_reservoir_histogram_callback_from_oar():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        cb = ReservoirHistogramCallback(log_dir=tmpdir)
+        assert cb is not None
+        assert cb.log_dir == tmpdir
+
+
+def test_reservoir_update_every_constant():
+    assert RESERVOIR_UPDATE_EVERY == 20

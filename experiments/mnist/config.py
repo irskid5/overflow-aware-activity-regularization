@@ -1,5 +1,10 @@
 """MNIST experiment configuration and training orchestration."""
 
+import copy
+import json
+import os
+from datetime import datetime
+
 import tensorflow as tf
 from oar import mod_sign, sign_ste_tanh
 
@@ -52,6 +57,24 @@ def _make_oar_config(use: bool, oar_lambda: float, omega: int) -> dict:
         "oar_lambda": oar_lambda,
         "omega": omega,
     }
+
+
+def _save_experiment_config(run_dir: str, options: dict) -> None:
+    """Save initial experiment configuration.
+
+    Args:
+        run_dir: Run directory path
+        options: Initial experiment options (before any mutations)
+    """
+    config = {
+        "started_at": datetime.now().isoformat(),
+        "initial_options": copy.deepcopy(options),
+        "experiment_type": "four_step_quantization",
+    }
+
+    config_path = os.path.join(run_dir, "config.json")
+    with open(config_path, "w") as f:
+        json.dump(config, f, indent=2)
 
 
 def get_default_layer_options(options: dict) -> dict:
@@ -244,6 +267,9 @@ def perform_four_step_quant(options: dict) -> str:
 
     # Create shared run directory for all steps
     run_dir = create_run_dir()
+
+    # Save initial experiment config (before any mutations)
+    _save_experiment_config(run_dir, options)
 
     pretrained_weights = None
     for step in range(1, 5):

@@ -160,3 +160,55 @@ def test_perform_four_step_quant_creates_shared_run_dir():
 
         finally:
             training_module.RUNS_DIR = original_runs_dir
+
+
+def test_perform_four_step_quant_saves_initial_config():
+    """Test that experiment-level config.json is saved in run directory."""
+    from experiments.mnist.config import perform_four_step_quant, MNIST_OPTIONS
+    import copy
+    import json
+    import os
+    import tempfile
+    from unittest.mock import patch
+
+    import experiments.mnist.training as training_module
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        original_runs_dir = training_module.RUNS_DIR
+        training_module.RUNS_DIR = tmpdir + "/"
+
+        def mock_perform_step(step, pretrained_weights, options, run_dir=None):
+            """Mock that creates step directories."""
+            if run_dir is not None:
+                step_dir = os.path.join(run_dir, f"step_{step}")
+                os.makedirs(step_dir, exist_ok=True)
+                ckpt_dir = os.path.join(step_dir, "checkpoints/")
+                os.makedirs(ckpt_dir, exist_ok=True)
+                return ckpt_dir
+            return f"{tmpdir}/step_{step}/checkpoints/"
+
+        try:
+            options = copy.deepcopy(MNIST_OPTIONS)
+            options["epochs"] = 0
+
+            with patch(
+                "experiments.mnist.config.perform_step_in_four_step_quant",
+                side_effect=mock_perform_step,
+            ):
+                result = perform_four_step_quant(options)
+
+            # Get the run directory
+            run_dir = os.path.dirname(os.path.dirname(result.rstrip("/")))
+
+            # Experiment-level config should exist
+            config_path = os.path.join(run_dir, "config.json")
+            assert os.path.exists(config_path), "Experiment config.json should exist"
+
+            with open(config_path) as f:
+                config = json.load(f)
+
+            assert "initial_options" in config
+            assert "started_at" in config
+
+        finally:
+            training_module.RUNS_DIR = original_runs_dir

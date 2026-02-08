@@ -14,6 +14,12 @@ from oar.callbacks import (
     _reservoir_update,
     RESERVOIR_UPDATE_EVERY,
 )
+from oar.layers import (
+    QRNNWithOAR,
+    QSimpleRNNCellWithOAR,
+    QDenseWithOAR,
+    Downsampling,
+)
 
 __version__ = "0.1.0"
 
@@ -36,4 +42,9 @@ __all__ = [
     "reset_stat_weights",
     "_reservoir_update",
     "RESERVOIR_UPDATE_EVERY",
+    # Layers
+    "QRNNWithOAR",
+    "QSimpleRNNCellWithOAR",
+    "QDenseWithOAR",
+    "Downsampling",
 ]

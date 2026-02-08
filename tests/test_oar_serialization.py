@@ -264,3 +264,28 @@ def test_oar_model_constructs():
     outputs = tf.keras.layers.Dense(5)(inputs)
     model = OARModel(inputs=inputs, outputs=outputs)
     assert model is not None
+
+
+def test_model_save_load_roundtrip():
+    """Integration test: full model save/load with OAR layers."""
+    import tempfile
+    
+    # Build a minimal model with OAR layers
+    inputs = tf.keras.layers.Input(shape=(10, 8), batch_size=2)
+    x = QRNNWithOAR(units=4, batch_size=2, use_oar=True, oar_lambda=1e-4, omega=6, name="QRNN_0")(inputs)
+    x = tf.keras.layers.Flatten()(x)
+    outputs = QDenseWithOAR(units=3, batch_size=2, use_oar=False, name="DENSE_0")(x)
+    
+    model = tf.keras.Model(inputs=inputs, outputs=outputs)
+    model.compile(optimizer='adam', loss='mse')
+    
+    # Save and load
+    with tempfile.TemporaryDirectory() as tmpdir:
+        model.save(f"{tmpdir}/model.keras")
+        loaded = tf.keras.models.load_model(f"{tmpdir}/model.keras")
+    
+    # Verify functional equivalence
+    test_input = tf.random.normal([2, 10, 8])
+    original_output = model(test_input)
+    loaded_output = loaded(test_input)
+    tf.debugging.assert_near(original_output, loaded_output, atol=1e-5)

@@ -1,5 +1,5 @@
 from mnist_rnn_model import get_model
-from utils.model_utils import (
+from oar import (
     mod_sign,
     sign_ste_tanh,
     get_default_layer_options_from_options,

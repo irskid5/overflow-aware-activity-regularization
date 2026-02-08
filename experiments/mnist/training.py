@@ -1,5 +1,6 @@
 """MNIST training utilities."""
 
+import json
 import os
 from datetime import datetime
 
@@ -25,6 +26,58 @@ def create_run_dir() -> str:
     run_dir = RUNS_DIR + now.strftime("%Y%m%d-%H%M%S") + "/"
     os.makedirs(run_dir, exist_ok=True)
     return run_dir
+
+
+def _serialize_layer_options(layer_options: dict) -> dict:
+    """Convert layer_options to JSON-serializable format.
+
+    Replaces activation functions with their string names.
+
+    Args:
+        layer_options: Layer options dict with activation functions
+
+    Returns:
+        JSON-serializable dict
+    """
+    result = {}
+    for layer_name, layer_config in layer_options.items():
+        if isinstance(layer_config, dict):
+            serialized = dict(layer_config)  # shallow copy
+            if "activation" in serialized and callable(serialized["activation"]):
+                func = serialized["activation"]
+                serialized["activation"] = getattr(func, "__name__", repr(func))
+            result[layer_name] = serialized
+        else:
+            result[layer_name] = layer_config
+    return result
+
+
+def _save_step_config(
+    step_dir: str,
+    step: int | None,
+    options: dict,
+    layer_options: dict,
+    pretrained_weights: str | None,
+) -> None:
+    """Save configuration for a training step.
+
+    Args:
+        step_dir: Directory to save config to
+        step: Step number (1-4) or None
+        options: Training options
+        layer_options: Per-layer options
+        pretrained_weights: Path to pretrained weights
+    """
+    config = {
+        "step": step,
+        "options": options,
+        "layer_options": _serialize_layer_options(layer_options),
+        "pretrained_weights": pretrained_weights,
+    }
+
+    config_path = os.path.join(step_dir, "config.json")
+    with open(config_path, "w") as f:
+        json.dump(config, f, indent=2)
 
 
 def configure_environment():
@@ -96,6 +149,9 @@ def train(
 
     # Ensure output directory exists
     os.makedirs(output_dir, exist_ok=True)
+
+    # Save configuration
+    _save_step_config(output_dir, step, options, layer_options, pretrained_weights)
 
     BATCHSIZE = options["batch_size"]
     ds_train, ds_val, ds_test = get_datasets(

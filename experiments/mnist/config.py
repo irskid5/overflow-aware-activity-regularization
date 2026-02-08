@@ -229,8 +229,10 @@ def perform_step_in_four_step_quant(
     )
 
 
-def perform_four_step_quant(options) -> str:
+def perform_four_step_quant(options: dict) -> str:
     """Performs the complete four-step quantization procedure.
+
+    Creates a single run directory and executes all four steps within it.
 
     Args:
         options: Experiment options dict
@@ -238,10 +240,18 @@ def perform_four_step_quant(options) -> str:
     Returns:
         Path to checkpoint folder of final step parameters
     """
+    from experiments.mnist.training import create_run_dir
+
+    # Create shared run directory for all steps
+    run_dir = create_run_dir()
+
     pretrained_weights = None
     for step in range(1, 5):
         pretrained_weights = perform_step_in_four_step_quant(
-            step=step, pretrained_weights=pretrained_weights, options=options
+            step=step,
+            pretrained_weights=pretrained_weights,
+            options=options,
+            run_dir=run_dir,
         )
         options["epochs"] = 1000
     return pretrained_weights

@@ -103,3 +103,60 @@ def test_perform_step_accepts_run_dir_parameter():
     param_names = list(sig.parameters.keys())
 
     assert "run_dir" in param_names, "Should accept run_dir parameter"
+
+
+def test_perform_four_step_quant_creates_shared_run_dir():
+    """Test that all four steps share the same run directory."""
+    from experiments.mnist.config import perform_four_step_quant, MNIST_OPTIONS
+    import copy
+    import os
+    import tempfile
+    from unittest.mock import patch
+
+    # Patch RUNS_DIR to use temp directory
+    import experiments.mnist.training as training_module
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        original_runs_dir = training_module.RUNS_DIR
+        training_module.RUNS_DIR = tmpdir + "/"
+
+        # Track which run_dir values were passed to each step
+        step_run_dirs = []
+
+        def mock_perform_step(step, pretrained_weights, options, run_dir=None):
+            """Mock that records run_dir and creates step directories."""
+            step_run_dirs.append((step, run_dir))
+            # Create the step directory to simulate real behavior
+            if run_dir is not None:
+                step_dir = os.path.join(run_dir, f"step_{step}")
+                os.makedirs(step_dir, exist_ok=True)
+                ckpt_dir = os.path.join(step_dir, "checkpoints/")
+                os.makedirs(ckpt_dir, exist_ok=True)
+                return ckpt_dir
+            return f"{tmpdir}/step_{step}/checkpoints/"
+
+        try:
+            options = copy.deepcopy(MNIST_OPTIONS)
+            options["epochs"] = 0  # Doesn't matter with mock
+
+            with patch(
+                "experiments.mnist.config.perform_step_in_four_step_quant",
+                side_effect=mock_perform_step,
+            ):
+                result = perform_four_step_quant(options)
+
+            # All four steps should have been called
+            assert len(step_run_dirs) == 4
+
+            # All steps should have received the SAME run_dir
+            run_dirs = [rd for _, rd in step_run_dirs]
+            assert run_dirs[0] is not None, "run_dir should be provided"
+            assert all(
+                rd == run_dirs[0] for rd in run_dirs
+            ), f"All steps should share same run_dir, got: {run_dirs}"
+
+            # Verify the run_dir is in the expected location (tmpdir)
+            assert run_dirs[0].startswith(tmpdir), f"run_dir should be in temp dir"
+
+        finally:
+            training_module.RUNS_DIR = original_runs_dir

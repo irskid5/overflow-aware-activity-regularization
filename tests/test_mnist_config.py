@@ -55,7 +55,6 @@ def test_get_model_parameter_stats_returns_dict():
     assert "DENSE_OUT" in stats
 
 
-@pytest.mark.skip(reason="Requires Task 4: experiments/mnist/training.py")
 def test_perform_step_returns_checkpoint_path():
     from experiments.mnist.config import (
         perform_step_in_four_step_quant,

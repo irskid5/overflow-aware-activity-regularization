@@ -26,16 +26,34 @@ python main.py
 ## Architecture
 
 ```
-main.py                 # Entry point, training loops, four-step quantization
-mnist_rnn_model.py      # Model architecture (QRNN + Dense layers)
-quantization.py         # TernarizationWithThreshold quantizer
-utils/model_utils.py    # TrackedActivation, Downsampling, OARModel, OAR1/OAR2
-export_mnist.py         # Preprocess MNIST for TFHE inference
-export_mnist_weights_h5.py  # Export weights to HDF5
+oar/                           # Core OAR framework (reusable)
+├── __init__.py                # Public API
+├── regularizers.py            # OAR1, OAR2, oar_penalty_fn, compute_oar_metric
+├── activations.py             # sign_ste_tanh, mod_sign, TrackedActivation
+├── layers.py                  # QRNNWithOAR, QSimpleRNNCellWithOAR, QDenseWithOAR, Downsampling
+├── quantizers.py              # TernarizationWithThreshold
+├── training.py                # OARModel, get_default_layer_options_from_options
+└── callbacks.py               # ReservoirHistogramCallback, reset_stat_weights
+
+main.py                        # Entry point, training loops, four-step quantization
+mnist_rnn_model.py             # MNIST model architecture (uses oar package)
+quantization.py                # Re-export shim (deprecated, use oar.quantizers)
+utils/model_utils.py           # Re-export shim (deprecated, use oar package)
 ```
 
 **Model Structure:**
 - Input → Ternarize (optional) → QRNN_0 → Downsampling → QRNN_1 → Flatten → DENSE_0 → DENSE_OUT
+
+## Importing OAR Components
+
+```python
+# Preferred: import from oar package
+from oar import OAR2, QRNNWithOAR, sign_ste_tanh, TrackedActivation
+
+# Deprecated: old import paths still work but are discouraged
+from utils.model_utils import OAR2  # works but deprecated
+from quantization import TernarizationWithThreshold  # works but deprecated
+```
 
 ## Key Concepts
 

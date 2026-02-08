@@ -1,17 +1,16 @@
 import os
-from oar import get_default_layer_options_from_options, reset_stat_weights
-from mnist_rnn_model import get_model
+from oar import reset_stat_weights
+from experiments.mnist import get_model, get_default_layer_options
 
 
 def export_mnist_weights(pretrained_weights: str, options):
-    """Given the pretrained weights folder, extract the weights in hdf5 format and save
-    in the same folder, in subfolder `hdf5`.
+    """Given the pretrained weights folder, extract the weights in hdf5 format.
 
     Args:
-        pretrained_weights (str): path to checkpoints folder containing model parameters
-        options: options for model
+        pretrained_weights: Path to checkpoints folder containing model parameters
+        options: Options for model
     """
-    model = get_model(options, get_default_layer_options_from_options(options))
+    model = get_model(options, get_default_layer_options(options))
 
     if pretrained_weights is not None:
         model.load_weights(pretrained_weights)

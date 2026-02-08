@@ -222,6 +222,46 @@ main.py                        # Simplified entry point - picks experiment, runs
 
 ---
 
+## Phase 3.5: Organized Experiment Outputs
+
+**Goal:** Reorganize four-step quantization outputs so all steps of a run are grouped together with proper config/log files.
+
+**Structure:**
+```
+runs/mnist/20260208-123456/
+├── config.json                    # Initial experiment options
+├── output.log                     # Full experiment log
+├── step_1/
+│   ├── config.json                # Step-specific config
+│   ├── output.log                 # Step-specific log
+│   ├── checkpoints/
+│   └── logs/tensorboard/
+├── step_2/
+│   └── ...
+├── step_3/
+│   └── ...
+└── step_4/
+    └── ...
+```
+
+**Changes:**
+- Add `step` and `run_dir` parameters to `train()`
+- Save `config.json` for each step (options + layer_options)
+- Add `output.log` file logging for each step
+- Update `perform_four_step_quant()` to create shared run directory
+- Save initial experiment `config.json` and experiment-level `output.log`
+
+**Risk:** Low - only changes output organization, not training logic
+
+**Validation:**
+1. All tests pass
+2. Training produces organized output structure
+3. Config files are valid JSON with all options
+
+**Detailed Plan:** See `docs/plans/2026-02-08-phase3.5-organized-outputs.md`
+
+---
+
 ## Phase 4: Generalize Training Steps
 
 **Goal:** Configuration-driven quantization steps.
@@ -290,14 +330,15 @@ main.py                        # Simplified entry point - picks experiment, runs
 
 ## Execution Order
 
-| Phase | Risk | Dependencies |
-|-------|------|--------------|
-| 0     | Med  | None         |
-| 1     | Low  | Phase 0      |
-| 1.5   | Low  | Phase 1      |
-| 2     | Med  | Phase 1.5    |
-| 3     | Med  | Phase 2      |
-| 4     | High | Phase 3      |
-| 5     | Low  | Phase 4      |
+| Phase | Risk | Dependencies | Status |
+|-------|------|--------------|--------|
+| 0     | Med  | None         | ✅ Done |
+| 1     | Low  | Phase 0      | ✅ Done |
+| 1.5   | Low  | Phase 1      | ✅ Done |
+| 2     | Med  | Phase 1.5    | ✅ Done |
+| 3     | Med  | Phase 2      | ✅ Done |
+| 3.5   | Low  | Phase 3      | Pending |
+| 4     | High | Phase 3.5    | Pending |
+| 5     | Low  | Phase 4      | Pending |
 
 **Recommended:** Complete each phase, validate with test run before proceeding.

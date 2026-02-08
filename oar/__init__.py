@@ -5,5 +5,14 @@ A TensorFlow/Keras framework for training quantized neural networks
 with overflow-aware regularization for TFHE inference.
 """
 
-# This will be populated as we add modules
+from oar.regularizers import OAR1, OAR2, OARRegularizer, oar_penalty_fn, compute_oar_metric
+
 __version__ = "0.1.0"
+
+__all__ = [
+    "OAR1",
+    "OAR2",
+    "OARRegularizer",
+    "oar_penalty_fn",
+    "compute_oar_metric",
+]

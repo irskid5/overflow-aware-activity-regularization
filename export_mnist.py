@@ -18,7 +18,7 @@ import os
 import tensorflow as tf
 import tensorflow_datasets as tfds
 import numpy as np
-from quantization import ternarize_tensor_with_threshold
+from oar import ternarize_tensor_with_threshold
 
 
 def cast_tensor_to_float32(tensor):

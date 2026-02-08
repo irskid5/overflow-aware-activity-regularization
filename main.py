@@ -511,8 +511,8 @@ def evaluation_different_oar_regularization_rates():
 
 if __name__ == "__main__":
     train_quantize_extract_MNIST_RNN()
-    train_quantize_extract_enlarged_MNIST_RNN()
-    evaluation_with_and_without_oar2()
-    evaluation_different_oar_regularization_rates()
-    extract_ternarized_mnist_test_dataset()
+    # train_quantize_extract_enlarged_MNIST_RNN()
+    # evaluation_with_and_without_oar2()
+    # evaluation_different_oar_regularization_rates()
+    # extract_ternarized_mnist_test_dataset()
     print("End!")

@@ -1,5 +1,5 @@
 import os
-from utils.model_utils import get_default_layer_options_from_options, reset_stat_weights
+from oar import get_default_layer_options_from_options, reset_stat_weights
 from mnist_rnn_model import get_model
 
 

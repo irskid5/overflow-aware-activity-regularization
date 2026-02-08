@@ -1,6 +1,6 @@
 import tensorflow as tf
 
-from utils.model_utils import (
+from oar import (
     compute_oar_metric,
     oar_penalty_fn,
     sign_ste_tanh,
@@ -41,7 +41,7 @@ def test_tracked_activation_applies_activation():
 
 
 def test_default_layer_options_use_omega_and_oar_lambda():
-    from utils.model_utils import get_default_layer_options_from_options
+    from oar import get_default_layer_options_from_options
 
     options = {
         "oar": {"omega": 6, "oar_lambda": 1e-4},

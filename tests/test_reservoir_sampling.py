@@ -2,7 +2,7 @@ import tempfile
 
 import tensorflow as tf
 
-from utils.model_utils import (
+from oar import (
     QDenseWithOAR,
     QRNNWithOAR,
     QSimpleRNNCellWithOAR,

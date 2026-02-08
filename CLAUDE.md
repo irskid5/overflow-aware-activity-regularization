@@ -37,8 +37,8 @@ oar/                           # Core OAR framework (reusable)
 
 main.py                        # Entry point, training loops, four-step quantization
 mnist_rnn_model.py             # MNIST model architecture (uses oar package)
-quantization.py                # Re-export shim (deprecated, use oar.quantizers)
-utils/model_utils.py           # Re-export shim (deprecated, use oar package)
+export_mnist.py                # Preprocess MNIST for TFHE inference
+export_mnist_weights_h5.py     # Export weights to HDF5
 ```
 
 **Model Structure:**
@@ -47,12 +47,7 @@ utils/model_utils.py           # Re-export shim (deprecated, use oar package)
 ## Importing OAR Components
 
 ```python
-# Preferred: import from oar package
 from oar import OAR2, QRNNWithOAR, sign_ste_tanh, TrackedActivation
-
-# Deprecated: old import paths still work but are discouraged
-from utils.model_utils import OAR2  # works but deprecated
-from quantization import TernarizationWithThreshold  # works but deprecated
 ```
 
 ## Key Concepts

@@ -1,16 +1,19 @@
 import os
 from oar import reset_stat_weights
-from experiments.mnist import get_model, get_default_layer_options
+from oar.config import TrainingStepConfig
+from experiments.mnist import get_model
 
 
-def export_mnist_weights(pretrained_weights: str, options):
+def export_mnist_weights(pretrained_weights: str, enlarge: bool = False):
     """Given the pretrained weights folder, extract the weights in hdf5 format.
 
     Args:
         pretrained_weights: Path to checkpoints folder containing model parameters
-        options: Options for model
+        enlarge: Whether model uses enlarged (128x128) input
     """
-    model = get_model(options, get_default_layer_options(options))
+    # Create a minimal step config just for model construction
+    step_config = TrainingStepConfig(name="export", enlarge=enlarge)
+    model = get_model(step_config)
 
     if pretrained_weights is not None:
         model.load_weights(pretrained_weights)

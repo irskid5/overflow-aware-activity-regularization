@@ -13,6 +13,8 @@ tf.random.set_seed(1997)  # For experimental reproducibility
 from experiments.mnist import perform_training_steps, STATIC_STEPS, create_step_4
 from experiments.mnist.steps import STEP_1, STEP_2, STEP_3, compute_thresholds
 from oar.config import TrainingStepConfig, LayerConfig
+from export_mnist_weights_h5 import export_mnist_weights
+from export_mnist import extract_ternarized_mnist_test_dataset
 
 
 def main():
@@ -22,6 +24,56 @@ def main():
         step_4_factory=create_step_4,
     )
     print(f"\nTraining complete. Final checkpoint: {final_checkpoint}")
+    return final_checkpoint
+
+
+def train_quantize_extract_MNIST_RNN() -> str:
+    """Runs four-step quantization and exports weights for standard MNIST."""
+    final_checkpoint = perform_training_steps(
+        steps=STATIC_STEPS,
+        step_4_factory=create_step_4,
+    )
+    export_mnist_weights(final_checkpoint, enlarge=False)
+    return final_checkpoint
+
+
+def train_quantize_extract_enlarged_MNIST_RNN() -> str:
+    """Runs four-step quantization and exports weights for enlarged MNIST (128x128).
+    
+    Note: Requires STEP definitions with enlarge=True. Currently uses standard steps.
+    TODO: Create ENLARGED_STATIC_STEPS for 128x128 input.
+    """
+    # Create enlarged versions of the steps
+    enlarged_steps = []
+    for step in STATIC_STEPS:
+        enlarged_step = TrainingStepConfig(
+            name=step.name,
+            epochs=step.epochs,
+            learning_rate=step.learning_rate if step.name != "step_1" else 5e-6,
+            batch_size=step.batch_size,
+            enlarge=True,
+            layers=step.layers,
+            input_config=step.input_config,
+        )
+        enlarged_steps.append(enlarged_step)
+    
+    def create_enlarged_step_4(tern_params):
+        step_4 = create_step_4(tern_params)
+        return TrainingStepConfig(
+            name=step_4.name,
+            epochs=step_4.epochs,
+            learning_rate=step_4.learning_rate,
+            batch_size=step_4.batch_size,
+            enlarge=True,
+            layers=step_4.layers,
+            input_config=step_4.input_config,
+        )
+    
+    final_checkpoint = perform_training_steps(
+        steps=enlarged_steps,
+        step_4_factory=create_enlarged_step_4,
+    )
+    export_mnist_weights(final_checkpoint, enlarge=True)
     return final_checkpoint
 
 
@@ -189,6 +241,9 @@ def evaluation_different_oar_regularization_rates():
 
 
 if __name__ == "__main__":
-    main()
+    train_quantize_extract_MNIST_RNN()
+    # train_quantize_extract_enlarged_MNIST_RNN()
     # evaluation_with_and_without_oar2()
     # evaluation_different_oar_regularization_rates()
+    # extract_ternarized_mnist_test_dataset()
+    print("End!")

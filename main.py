@@ -10,16 +10,17 @@ tf.config.optimizer.set_jit("autoclustering")
 
 tf.random.set_seed(1997)  # For experimental reproducibility
 
-from experiments.mnist import (
-    MNIST_OPTIONS,
-    ENLARGED_MNIST_OPTIONS,
-    perform_four_step_quant,
-    perform_step_in_four_step_quant,
-    get_default_layer_options,
-    get_model_parameter_stats,
-)
-from export_mnist_weights_h5 import export_mnist_weights
-from export_mnist import extract_ternarized_mnist_test_dataset
+from experiments.mnist import perform_training_steps, STATIC_STEPS, create_step_4
+
+
+def main():
+    """Runs four-step quantization using the new config-driven API."""
+    final_checkpoint = perform_training_steps(
+        steps=STATIC_STEPS,
+        step_4_factory=create_step_4,
+    )
+    print(f"\nTraining complete. Final checkpoint: {final_checkpoint}")
+    return final_checkpoint
 
 
 def train_quantize_extract_MNIST_RNN() -> str:

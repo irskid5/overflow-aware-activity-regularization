@@ -12,6 +12,8 @@ from oar import (
     TernarizationWithThreshold,
     ternarize_tensor_with_threshold,
 )
+from oar.config import TrainingStepConfig, LayerConfig, resolve_activation
+from experiments.mnist.steps import get_default_layer_config
 
 SEED = 1997
 
@@ -31,166 +33,154 @@ dense_kernel_initializer = tf.keras.initializers.VarianceScaling(
 )
 
 
-def get_model(options, layer_options):
-    """Initialize and return the MNIST RNN model.
+def get_model(step_config: TrainingStepConfig) -> OARModel:
+    """Build MNIST RNN model from step configuration.
 
     Args:
-        options: Options dict with keys:
-            - enlarge: bool, use 128x128 input (True) or 28x28 (False)
-            - batch_size: int, batch size for training
-            - quantize: bool, enable weight quantization
-            - tᵢ: float, input ternarization threshold multiplier
-        layer_options: Per-layer options dict with keys for each layer:
-            INPUT, QRNN_0, QRNN_1, DENSE_0, DENSE_OUT
+        step_config: Training step configuration
 
     Returns:
-        OARModel instance
+        Compiled OARModel
     """
-    inputs = tf.keras.layers.Input(
-        shape=(28, 28, 1) if not options["enlarge"] else (128, 128, 1)
-    )
 
-    # Ternarize inputs (if step 3+)
-    x = (
-        tf.keras.layers.Lambda(
+    def get_layer_cfg(name: str) -> LayerConfig:
+        """Get config for layer, using defaults if not specified."""
+        return step_config.layers.get(name, get_default_layer_config(name))
+
+    def make_quantizer(threshold: float | None, name: str = None):
+        """Create quantizer if threshold is set."""
+        if threshold is None:
+            return None
+        return TernarizationWithThreshold(threshold=threshold, name=name)
+
+    # Input shape based on enlarge setting
+    if step_config.enlarge:
+        input_shape = (128, 128, 1)
+        seq_len, features = 128, 128
+        model_name = "ENLARGED_MNIST_RNN"
+    else:
+        input_shape = (28, 28, 1)
+        seq_len, features = 28, 28
+        model_name = "MNIST_RNN"
+
+    inputs = tf.keras.layers.Input(shape=input_shape)
+
+    # Input ternarization
+    if step_config.input_config.quantize_threshold is not None:
+        theta = step_config.input_config.quantize_threshold
+        x = tf.keras.layers.Lambda(
             lambda x: tf.stop_gradient(
                 ternarize_tensor_with_threshold(
-                    x, theta=options["tᵢ"] * tf.reduce_mean(tf.abs(x))
+                    x, theta=theta * tf.reduce_mean(tf.abs(x))
                 )
             ),
             trainable=False,
             dtype=tf.float32,
             name="TERNARIZE_WITH_THRESHOLD",
         )(inputs)
-        if layer_options["INPUT"]["ternarize"]
-        else tf.keras.layers.Lambda(lambda x: x, name="NOOP")(inputs)
-    )
+    else:
+        x = tf.keras.layers.Lambda(lambda x: x, name="NOOP")(inputs)
 
-    x = tf.keras.layers.Reshape(
-        target_shape=(28, 28) if not options["enlarge"] else (128, 128)
-    )(x)
+    x = tf.keras.layers.Reshape((seq_len, features))(x)
 
-    qrnn_0 = QRNNWithOAR(
+    # QRNN_0
+    cfg = get_layer_cfg("QRNN_0")
+    x = QRNNWithOAR(
         cell=None,
         units=128,
         activation=TrackedActivation(
-            activation=layer_options["QRNN_0"]["activation"], name="QRNN_0"
+            activation=resolve_activation(cfg.activation, cfg.omega),
+            name="QRNN_0",
         ),
-        batch_size=options["batch_size"],
+        batch_size=step_config.batch_size,
         use_bias=False,
         return_sequences=True,
         kernel_regularizer=kernel_regularizer,
         recurrent_regularizer=recurrent_regularizer,
-        kernel_quantizer=(
-            TernarizationWithThreshold(
-                threshold=layer_options["QRNN_0"]["τ"],
-                name="QRNN_0/quantized_kernel",
-            )
-            if options["quantize"]
-            else None
-        ),
-        recurrent_quantizer=(
-            TernarizationWithThreshold(
-                threshold=layer_options["QRNN_0"]["τ"],
-                name="QRNN_0/quantized_recurrent",
-            )
-            if options["quantize"]
-            else None
-        ),
+        kernel_quantizer=make_quantizer(cfg.quantize_threshold, "QRNN_0/quantized_kernel"),
+        recurrent_quantizer=make_quantizer(cfg.quantize_threshold, "QRNN_0/quantized_recurrent"),
         kernel_initializer=rnn_kernel_initializer,
         recurrent_initializer=rnn_recurrent_initializer,
-        use_oar=layer_options["QRNN_0"]["oar"]["use"],
-        oar_lambda=layer_options["QRNN_0"]["oar"]["oar_lambda"],
-        omega=layer_options["QRNN_0"]["oar"]["omega"],
-        s=layer_options["QRNN_0"]["s"],
+        use_oar=cfg.oar_lambda is not None,
+        oar_lambda=cfg.oar_lambda or 0.0,
+        omega=cfg.omega,
+        s=cfg.gradient_scale,
         name="QRNN_0",
     )(x)
-    tr = Downsampling(reduction_factor=2)(qrnn_0)
-    qrnn_1 = QRNNWithOAR(
+
+    x = Downsampling(reduction_factor=2)(x)
+
+    # QRNN_1
+    cfg = get_layer_cfg("QRNN_1")
+    x = QRNNWithOAR(
         cell=None,
         units=128,
         activation=TrackedActivation(
-            activation=layer_options["QRNN_1"]["activation"], name="QRNN_1"
+            activation=resolve_activation(cfg.activation, cfg.omega),
+            name="QRNN_1",
         ),
-        batch_size=options["batch_size"],
+        batch_size=step_config.batch_size,
         use_bias=False,
         return_sequences=True,
         kernel_regularizer=kernel_regularizer,
         recurrent_regularizer=recurrent_regularizer,
-        kernel_quantizer=(
-            TernarizationWithThreshold(
-                threshold=layer_options["QRNN_1"]["τ"],
-                name="QRNN_1/quantized_kernel",
-            )
-            if options["quantize"]
-            else None
-        ),
-        recurrent_quantizer=(
-            TernarizationWithThreshold(
-                threshold=layer_options["QRNN_1"]["τ"],
-                name="QRNN_1/quantized_recurrent",
-            )
-            if options["quantize"]
-            else None
-        ),
+        kernel_quantizer=make_quantizer(cfg.quantize_threshold, "QRNN_1/quantized_kernel"),
+        recurrent_quantizer=make_quantizer(cfg.quantize_threshold, "QRNN_1/quantized_recurrent"),
         kernel_initializer=rnn_kernel_initializer,
         recurrent_initializer=rnn_recurrent_initializer,
-        use_oar=layer_options["QRNN_1"]["oar"]["use"],
-        oar_lambda=layer_options["QRNN_1"]["oar"]["oar_lambda"],
-        omega=layer_options["QRNN_1"]["oar"]["omega"],
-        s=layer_options["QRNN_1"]["s"],
+        use_oar=cfg.oar_lambda is not None,
+        oar_lambda=cfg.oar_lambda or 0.0,
+        omega=cfg.omega,
+        s=cfg.gradient_scale,
         name="QRNN_1",
-    )(tr)
-    qrnn_1 = tf.keras.layers.Flatten()(qrnn_1)
-    dense_0 = QDenseWithOAR(
-        1024,
+    )(x)
+
+    x = tf.keras.layers.Flatten()(x)
+
+    # DENSE_0
+    cfg = get_layer_cfg("DENSE_0")
+    x = QDenseWithOAR(
+        units=1024,
         activation=TrackedActivation(
-            activation=layer_options["DENSE_0"]["activation"], name="DENSE_0"
+            activation=resolve_activation(cfg.activation, cfg.omega),
+            name="DENSE_0",
         ),
-        batch_size=options["batch_size"],
+        batch_size=step_config.batch_size,
         use_bias=False,
         kernel_regularizer=kernel_regularizer,
-        kernel_quantizer=(
-            TernarizationWithThreshold(
-                threshold=layer_options["DENSE_0"]["τ"], name="DENSE_0"
-            )
-            if options["quantize"]
-            else None
-        ),
+        kernel_quantizer=make_quantizer(cfg.quantize_threshold, "DENSE_0"),
         kernel_initializer=dense_kernel_initializer,
-        use_oar=layer_options["DENSE_0"]["oar"]["use"],
-        oar_lambda=layer_options["DENSE_0"]["oar"]["oar_lambda"],
-        omega=layer_options["DENSE_0"]["oar"]["omega"],
-        s=layer_options["DENSE_0"]["s"],
+        use_oar=cfg.oar_lambda is not None,
+        oar_lambda=cfg.oar_lambda or 0.0,
+        omega=cfg.omega,
+        s=cfg.gradient_scale,
         name="DENSE_0",
-    )(qrnn_1)
-    output = QDenseWithOAR(
-        10,
-        use_bias=False,
+    )(x)
+
+    # DENSE_OUT
+    cfg = get_layer_cfg("DENSE_OUT")
+    outputs = QDenseWithOAR(
+        units=10,
         activation=TrackedActivation(
-            activation=layer_options["DENSE_OUT"]["activation"], name="DENSE_OUT"
+            activation=resolve_activation(cfg.activation, cfg.omega),
+            name="DENSE_OUT",
         ),
-        batch_size=options["batch_size"],
+        batch_size=step_config.batch_size,
+        use_bias=False,
         kernel_regularizer=kernel_regularizer,
-        kernel_quantizer=(
-            TernarizationWithThreshold(
-                threshold=layer_options["DENSE_OUT"]["τ"], name="DENSE_OUT"
-            )
-            if options["quantize"]
-            else None
-        ),
+        kernel_quantizer=make_quantizer(cfg.quantize_threshold, "DENSE_OUT"),
         kernel_initializer=dense_kernel_initializer,
-        use_oar=layer_options["DENSE_OUT"]["oar"]["use"],
-        oar_lambda=layer_options["DENSE_OUT"]["oar"]["oar_lambda"],
-        omega=layer_options["DENSE_OUT"]["oar"]["omega"],
-        s=layer_options["DENSE_OUT"]["s"],
+        use_oar=cfg.oar_lambda is not None,
+        oar_lambda=cfg.oar_lambda or 0.0,
+        omega=cfg.omega,
+        s=cfg.gradient_scale,
         name="DENSE_OUT",
-    )(dense_0)
+    )(x)
 
     model = OARModel(
         inputs=[inputs],
-        outputs=[output],
-        name="MNIST_RNN" if not options["enlarge"] else "ENLARGED_MNIST_RNN",
+        outputs=[outputs],
+        name=model_name,
     )
 
     model.summary()

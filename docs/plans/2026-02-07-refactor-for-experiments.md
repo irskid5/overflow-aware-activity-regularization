@@ -230,10 +230,9 @@ main.py                        # Simplified entry point - picks experiment, runs
 ```
 runs/mnist/20260208-123456/
 ├── config.json                    # Initial experiment options
-├── output.log                     # Full experiment log
+├── output.log                     # Full experiment log (all steps)
 ├── step_1/
-│   ├── config.json                # Step-specific config
-│   ├── output.log                 # Step-specific log
+│   ├── config.json                # Step-specific config (options + layer_options)
 │   ├── checkpoints/
 │   └── logs/tensorboard/
 ├── step_2/
@@ -244,17 +243,21 @@ runs/mnist/20260208-123456/
     └── ...
 ```
 
+**Note:** No per-step `output.log` - the experiment-level log captures all output. Search for "STEP N/4" markers to find step boundaries.
+
 **Changes:**
-- Add `step` and `run_dir` parameters to `train()`
-- Save `config.json` for each step (options + layer_options)
-- Add `output.log` file logging for each step
+- Add `create_run_dir()` function and `step`/`run_dir` parameters to `train()`
+- Save `config.json` for each step (options + layer_options, with activation functions serialized to names)
+- Add `tee_output()` context manager for experiment-level logging
 - Update `perform_four_step_quant()` to create shared run directory
-- Save initial experiment `config.json` and experiment-level `output.log`
+- Save initial experiment `config.json` before any mutations
+- Extract `_make_oar_config()` helper (DRY fix)
+- Use `verbose=2` for cleaner log files (one line per epoch)
 
 **Risk:** Low - only changes output organization, not training logic
 
 **Validation:**
-1. All tests pass
+1. All 72 tests pass
 2. Training produces organized output structure
 3. Config files are valid JSON with all options
 
@@ -337,7 +340,7 @@ runs/mnist/20260208-123456/
 | 1.5   | Low  | Phase 1      | ✅ Done |
 | 2     | Med  | Phase 1.5    | ✅ Done |
 | 3     | Med  | Phase 2      | ✅ Done |
-| 3.5   | Low  | Phase 3      | Pending |
+| 3.5   | Low  | Phase 3      | ✅ Done |
 | 4     | High | Phase 3.5    | Pending |
 | 5     | Low  | Phase 4      | Pending |
 

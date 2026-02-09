@@ -250,17 +250,13 @@ def test_qdense_with_oar_get_config():
 from oar.training import OARModel
 
 
-def test_get_default_layer_options_from_experiments():
-    from experiments.mnist.config import get_default_layer_options
+def test_get_default_layer_config_from_experiments():
+    from experiments.mnist.steps import get_default_layer_config
 
-    options = {
-        "oar": {"omega": 6, "oar_lambda": 1e-4},
-        "s": 1.0,
-        "t": 1.0,
-    }
-    layer_options = get_default_layer_options(options)
-    assert layer_options["QRNN_0"]["oar"]["omega"] == 6
-    assert layer_options["QRNN_0"]["oar"]["oar_lambda"] == 1e-4
+    # Test that get_default_layer_config returns proper LayerConfig
+    layer_config = get_default_layer_config("QRNN_0")
+    assert layer_config.omega == 6
+    assert layer_config.activation == "tanh"
 
 
 def test_oar_model_constructs():

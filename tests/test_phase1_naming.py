@@ -40,14 +40,19 @@ def test_tracked_activation_applies_activation():
     tf.debugging.assert_equal(out, tf.constant([0.0, 2.0]))
 
 
-def test_default_layer_options_use_omega_and_oar_lambda():
-    from experiments.mnist.config import get_default_layer_options
 
-    options = {
-        "oar": {"omega": 6, "oar_lambda": 1e-4},
-        "s": 1.0,
-        "t": 1.0,
-    }
-    layer_options = get_default_layer_options(options)
-    assert layer_options["QRNN_0"]["oar"]["omega"] == 6
-    assert layer_options["QRNN_0"]["oar"]["oar_lambda"] == 1e-4
+def test_get_default_layer_config_uses_correct_defaults():
+    from experiments.mnist.steps import get_default_layer_config
+
+    # Test that get_default_layer_config returns proper LayerConfig
+    layer_config = get_default_layer_config("QRNN_0")
+    assert layer_config.omega == 6
+    assert layer_config.activation == "tanh"
+
+def test_get_default_layer_config_uses_correct_defaults():
+    from experiments.mnist.steps import get_default_layer_config
+
+    # Test that get_default_layer_config returns proper LayerConfig
+    layer_config = get_default_layer_config("QRNN_0")
+    assert layer_config.omega == 6
+    assert layer_config.activation == "tanh"

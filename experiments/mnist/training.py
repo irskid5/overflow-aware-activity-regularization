@@ -257,7 +257,7 @@ def train(
             epochs=options["epochs"],
             validation_data=ds_val,
             callbacks=[tb_callback, reservoir_cb, ckpt_callback, lr_callback],
-            verbose=1,
+            verbose=2,  # One line per epoch (no progress bar for cleaner logs)
         )
     except Exception as e:
         print(e)
@@ -266,7 +266,7 @@ def train(
     try:
         model.evaluate(
             ds_test,
-            verbose=1,
+            verbose=2,  # One line (no progress bar)
         )
     except Exception as e:
         print(e)

@@ -1,16 +1,20 @@
 """MNIST training utilities."""
 
+from __future__ import annotations
+
 import json
 import os
 import sys
 from contextlib import contextmanager
 from datetime import datetime
+from typing import TYPE_CHECKING
 
 import tensorflow as tf
 
 from oar import ReservoirHistogramCallback, reset_stat_weights
-from experiments.mnist.data import get_datasets
-from experiments.mnist.model import get_model
+
+if TYPE_CHECKING:
+    from oar.config import TrainingStepConfig
 
 RUNS_DIR = "runs/mnist/"
 TB_LOGS_DIR = "logs/tensorboard/"
@@ -78,50 +82,25 @@ def tee_output(log_path: str):
             sys.stderr = old_stderr
 
 
-def _serialize_layer_options(layer_options: dict) -> dict:
-    """Convert layer_options to JSON-serializable format.
-
-    Replaces activation functions with their string names.
-
-    Args:
-        layer_options: Layer options dict with activation functions
-
-    Returns:
-        JSON-serializable dict
-    """
-    result = {}
-    for layer_name, layer_config in layer_options.items():
-        if isinstance(layer_config, dict):
-            serialized = dict(layer_config)  # shallow copy
-            if "activation" in serialized and callable(serialized["activation"]):
-                func = serialized["activation"]
-                serialized["activation"] = getattr(func, "__name__", repr(func))
-            result[layer_name] = serialized
-        else:
-            result[layer_name] = layer_config
-    return result
-
-
 def _save_step_config(
     step_dir: str,
-    step: int | None,
-    options: dict,
-    layer_options: dict,
+    step_number: int | None,
+    step_config: "TrainingStepConfig",
     pretrained_weights: str | None,
 ) -> None:
     """Save configuration for a training step.
 
     Args:
         step_dir: Directory to save config to
-        step: Step number (1-4) or None
-        options: Training options
-        layer_options: Per-layer options
+        step_number: Step number (1-4) or None
+        step_config: Training step configuration
         pretrained_weights: Path to pretrained weights
     """
+    from dataclasses import asdict
+
     config = {
-        "step": step,
-        "options": options,
-        "layer_options": _serialize_layer_options(layer_options),
+        "step": step_number,
+        "step_config": asdict(step_config),
         "pretrained_weights": pretrained_weights,
     }
 
@@ -162,113 +141,93 @@ def configure_environment():
 
 
 def train(
-    pretrained_weights: str | None,
-    options: dict,
-    layer_options: dict,
-    step: int | None = None,
+    step_config: "TrainingStepConfig",
+    step_number: int | None = None,
+    pretrained_weights: str | None = None,
     run_dir: str | None = None,
 ) -> str:
-    """Runs training for a number of epochs.
-
-    Loads pretrained weights, builds model, and runs training.
-    Also runs evaluation over test set at the end.
+    """Run training for a step.
 
     Args:
-        pretrained_weights: Path to checkpoints folder for initialization
-        options: Training options dict
-        layer_options: Per-layer options dict
-        step: Optional step number for four-step quantization. When provided,
-            creates a step_N subdirectory within run_dir.
-        run_dir: Optional path to run directory. If None, creates a new
-            timestamped directory using create_run_dir().
+        step_config: Training step configuration (contains all params)
+        step_number: Step number for logging (1-indexed)
+        pretrained_weights: Path to checkpoints folder
+        run_dir: Run directory (creates new if None)
 
     Returns:
-        Path to checkpoints folder of trained model
+        Path to checkpoints folder
     """
+    from experiments.mnist.model import get_model
+    from experiments.mnist.data import get_datasets
+
     strategy, _ = configure_environment()
 
-    # Determine run directory
     if run_dir is None:
         run_dir = create_run_dir()
 
-    # Determine output directory (with optional step subdirectory)
-    if step is not None:
-        output_dir = os.path.join(run_dir, f"step_{step}") + "/"
+    if step_number is not None:
+        output_dir = os.path.join(run_dir, f"step_{step_number}") + "/"
     else:
         output_dir = run_dir
 
-    # Ensure output directory exists
     os.makedirs(output_dir, exist_ok=True)
+    _save_step_config(output_dir, step_number, step_config, pretrained_weights)
 
-    # Save configuration
-    _save_step_config(output_dir, step, options, layer_options, pretrained_weights)
-
-    BATCHSIZE = options["batch_size"]
     ds_train, ds_val, ds_test = get_datasets(
-        batch_size=BATCHSIZE, enlarge=options["enlarge"]
+        batch_size=step_config.batch_size,
+        enlarge=step_config.enlarge,
     )
 
     with strategy.scope():
-        model = get_model(options, layer_options)
+        model = get_model(step_config)
 
         if pretrained_weights is not None:
             model.load_weights(pretrained_weights)
-            print("Restored pretrained weights from {}.".format(pretrained_weights))
+            print(f"Restored pretrained weights from {pretrained_weights}.")
 
         reset_stat_weights(model)
 
         model.compile(
-            optimizer=tf.keras.optimizers.Adam(learning_rate=options["learning_rate"]),
+            optimizer=tf.keras.optimizers.Adam(learning_rate=step_config.learning_rate),
             loss=tf.keras.losses.SparseCategoricalCrossentropy(from_logits=False),
             metrics=["accuracy"],
         )
 
-    # TensorBoard callback
+    # Callbacks
     tb_callback = tf.keras.callbacks.TensorBoard(
-        log_dir=(output_dir + TB_LOGS_DIR),
+        log_dir=output_dir + TB_LOGS_DIR,
         histogram_freq=1,
         update_freq="epoch",
     )
-    reservoir_cb = ReservoirHistogramCallback(log_dir=(output_dir + TB_LOGS_DIR))
+    reservoir_cb = ReservoirHistogramCallback(log_dir=output_dir + TB_LOGS_DIR)
 
-    # Learning rate schedule
     lr_callback = tf.keras.callbacks.LearningRateScheduler(
         tf.keras.optimizers.schedules.CosineDecay(
-            options["learning_rate"], 100, alpha=0.1
+            step_config.learning_rate, 100, alpha=0.1
         ),
         verbose=0,
     )
 
+    ckpt_callback = None
     if RECORD_CKPTS:
         ckpt_callback = tf.keras.callbacks.ModelCheckpoint(
-            filepath=(output_dir + CKPT_DIR),
+            filepath=output_dir + CKPT_DIR,
             save_weights_only=True,
             save_best_only=False,
             monitor="val_accuracy",
             mode="max",
             verbose=1,
         )
-    else:
-        ckpt_callback = None
 
-    try:
-        model.fit(
-            ds_train,
-            epochs=options["epochs"],
-            validation_data=ds_val,
-            callbacks=[tb_callback, reservoir_cb, ckpt_callback, lr_callback],
-            verbose=2,  # One line per epoch (no progress bar for cleaner logs)
-        )
-    except Exception as e:
-        print(e)
+    model.fit(
+        ds_train,
+        epochs=step_config.epochs,
+        validation_data=ds_val,
+        callbacks=[cb for cb in [tb_callback, reservoir_cb, ckpt_callback, lr_callback] if cb],
+        verbose=2,
+    )
 
     print("\nRUNNING EVALUATION OVER TEST SET\n")
-    try:
-        model.evaluate(
-            ds_test,
-            verbose=2,  # One line (no progress bar)
-        )
-    except Exception as e:
-        print(e)
+    model.evaluate(ds_test, verbose=2)
 
     return output_dir + CKPT_DIR

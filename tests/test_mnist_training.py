@@ -21,35 +21,30 @@ def test_configure_environment_returns_one_device_strategy():
     assert isinstance(strategy, tf.distribute.OneDeviceStrategy)
 
 
-def test_train_accepts_step_and_run_dir_parameters():
-    """Test that train() accepts optional step and run_dir parameters."""
+def test_train_accepts_step_config():
     from experiments.mnist.training import train
     import inspect
-
+    
     sig = inspect.signature(train)
-    param_names = list(sig.parameters.keys())
-
-    assert "step" in param_names, "train() should accept 'step' parameter"
-    assert "run_dir" in param_names, "train() should accept 'run_dir' parameter"
+    params = list(sig.parameters.keys())
+    assert "step_config" in params
+    assert "options" not in params
+    assert "layer_options" not in params
 
 
 def test_train_creates_step_subdir_when_step_provided():
     """Test that train() creates step_N subdirectory when step is provided."""
     from experiments.mnist.training import train
-    from experiments.mnist.config import MNIST_OPTIONS, get_default_layer_options
-    import copy
+    from oar.config import TrainingStepConfig
 
-    options = copy.deepcopy(MNIST_OPTIONS)
-    options["epochs"] = 0  # Skip actual training
-    layer_options = get_default_layer_options(options)
+    step_config = TrainingStepConfig(name="test", epochs=0)
 
     with tempfile.TemporaryDirectory() as tmpdir:
         run_dir = tmpdir + "/test_run/"
         result = train(
+            step_config=step_config,
+            step_number=1,
             pretrained_weights=None,
-            options=options,
-            layer_options=layer_options,
-            step=1,
             run_dir=run_dir,
         )
 
@@ -61,21 +56,17 @@ def test_train_creates_step_subdir_when_step_provided():
 def test_train_saves_config_json_when_step_provided():
     """Test that train() saves config.json in step directory."""
     from experiments.mnist.training import train
-    from experiments.mnist.config import MNIST_OPTIONS, get_default_layer_options
-    import copy
+    from oar.config import TrainingStepConfig
     import json
 
-    options = copy.deepcopy(MNIST_OPTIONS)
-    options["epochs"] = 0  # Skip actual training
-    layer_options = get_default_layer_options(options)
+    step_config = TrainingStepConfig(name="test_step", epochs=0, batch_size=32)
 
     with tempfile.TemporaryDirectory() as tmpdir:
         run_dir = tmpdir + "/test_run/"
         train(
+            step_config=step_config,
+            step_number=2,
             pretrained_weights=None,
-            options=options,
-            layer_options=layer_options,
-            step=2,
             run_dir=run_dir,
         )
 
@@ -85,8 +76,8 @@ def test_train_saves_config_json_when_step_provided():
         with open(config_path) as f:
             saved_config = json.load(f)
 
-        assert "options" in saved_config
-        assert "layer_options" in saved_config
         assert "step" in saved_config
+        assert "step_config" in saved_config
         assert saved_config["step"] == 2
-        assert saved_config["options"]["batch_size"] == options["batch_size"]
+        assert saved_config["step_config"]["batch_size"] == 32
+        assert saved_config["step_config"]["name"] == "test_step"

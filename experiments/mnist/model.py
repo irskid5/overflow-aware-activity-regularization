@@ -1,6 +1,7 @@
 """MNIST RNN model architecture with OAR support."""
 
 import tensorflow as tf
+from functools import partial
 from qkeras import *
 
 from oar import (
@@ -11,9 +12,10 @@ from oar import (
     TrackedActivation,
     TernarizationWithThreshold,
     ternarize_tensor_with_threshold,
+    sign_ste_tanh,
+    mod_sign,
 )
-from oar.config import TrainingStepConfig, LayerConfig, resolve_activation
-from experiments.mnist.steps import get_default_layer_config
+from oar.config import StepConfig, LayerStepConfig, ActivationConfig
 
 SEED = 1997
 
@@ -33,20 +35,126 @@ dense_kernel_initializer = tf.keras.initializers.VarianceScaling(
 )
 
 
-def get_model(step_config: TrainingStepConfig) -> OARModel:
-    """Build MNIST RNN model from step configuration.
+def resolve_activation(config: ActivationConfig):
+    """Resolve ActivationConfig to callable activation function.
+    
+    Args:
+        config: Activation configuration
+        
+    Returns:
+        Activation function callable
+    """
+    if config.function == "tanh":
+        return tf.keras.activations.tanh
+    elif config.function == "sign_ste_tanh":
+        return sign_ste_tanh
+    elif config.function == "mod_sign":
+        return partial(mod_sign, num_bits=config.omega)
+    elif config.function == "softmax":
+        return tf.keras.activations.softmax
+    else:
+        raise ValueError(f"Unknown activation: {config.function}")
 
+
+def get_model(
+    step_config: StepConfig,
+    pretrained_weights: str | None = None,
+) -> OARModel:
+    """Build MNIST RNN model from step configuration.
+    
+    If pretrained_weights is provided and any layer needs computed thresholds
+    (ternarization_scale set but no explicit threshold), this function:
+    1. Builds a temporary model
+    2. Loads the pretrained weights
+    3. Computes thresholds as τ = ternarization_scale × E[|θ|]
+    4. Builds the final model with computed thresholds
+    
     Args:
         step_config: Training step configuration
-
+        pretrained_weights: Path to checkpoint (for threshold computation)
+        
     Returns:
-        Compiled OARModel
+        Compiled OARModel ready for training
     """
+    # Check if we need to compute thresholds
+    thresholds = {}
+    if pretrained_weights:
+        thresholds = _compute_thresholds_if_needed(step_config, pretrained_weights)
+    
+    # Build model with thresholds
+    model = _build_model(step_config, thresholds)
+    
+    # Load weights if provided
+    if pretrained_weights:
+        model.load_weights(pretrained_weights)
+        print(f"Restored pretrained weights from {pretrained_weights}.")
+    
+    return model
 
-    def get_layer_cfg(name: str) -> LayerConfig:
+
+def _compute_thresholds_if_needed(
+    step_config: StepConfig,
+    checkpoint_path: str,
+) -> dict[str, float]:
+    """Compute thresholds: τ = ternarization_scale × E[|θ|].
+    
+    Only computes for layers that have ternarization_scale set but no explicit threshold.
+    Skips INPUT layer (its threshold is used directly, not computed from weights).
+    """
+    # First check if any layer needs computed thresholds
+    layers_needing_thresholds = []
+    for name, cfg in step_config.layers.items():
+        q = cfg.quantization
+        if q.ternarization_scale is not None and q.threshold is None and name != "INPUT":
+            layers_needing_thresholds.append(name)
+    
+    if not layers_needing_thresholds:
+        return {}
+    
+    # Build temp model and load weights
+    temp_model = _build_model(step_config, thresholds={})
+    temp_model.load_weights(checkpoint_path)
+    
+    # Compute thresholds
+    thresholds = {}
+    for layer_name in layers_needing_thresholds:
+        t = step_config.layers[layer_name].quantization.ternarization_scale
+        
+        for layer in temp_model.layers:
+            if layer_name in layer.name and layer.trainable_weights:
+                all_weights = tf.concat(
+                    [tf.reshape(w, [-1]) for w in layer.trainable_weights], axis=-1
+                )
+                mean_abs = float(tf.reduce_mean(tf.abs(all_weights)).numpy())
+                thresholds[layer_name] = t * mean_abs
+                break
+    
+    print(f"Computed thresholds: {thresholds}")
+    return thresholds
+
+
+def _get_default_layer_config() -> LayerStepConfig:
+    """Return default layer config (tanh activation, no quantization)."""
+    return LayerStepConfig()
+
+
+def _build_model(step_config: StepConfig, thresholds: dict[str, float]) -> OARModel:
+    """Build the actual model architecture.
+    
+    Args:
+        step_config: Training step configuration
+        thresholds: Pre-computed thresholds for layers (layer_name -> threshold)
+    """
+    def get_layer_cfg(name: str) -> LayerStepConfig:
         """Get config for layer, using defaults if not specified."""
-        return step_config.layers.get(name, get_default_layer_config(name))
-
+        return step_config.layers.get(name, _get_default_layer_config())
+    
+    def get_threshold(name: str, cfg: LayerStepConfig) -> float | None:
+        """Get threshold for a layer, using computed or explicit."""
+        if name in thresholds:
+            return thresholds[name]
+        return cfg.quantization.threshold
+    
     def make_quantizer(threshold: float | None, name: str = None):
         """Create quantizer if threshold is set."""
         if threshold is None:
@@ -65,11 +173,12 @@ def get_model(step_config: TrainingStepConfig) -> OARModel:
 
     inputs = tf.keras.layers.Input(shape=input_shape)
 
-    # Input ternarization
-    if step_config.input_config.quantize_threshold is not None:
-        theta = step_config.input_config.quantize_threshold
+    # Input ternarization (uses ternarization_scale directly as threshold)
+    input_cfg = get_layer_cfg("INPUT")
+    input_threshold = input_cfg.quantization.ternarization_scale
+    if input_threshold is not None:
         x = tf.keras.layers.Lambda(
-            lambda x: tf.stop_gradient(
+            lambda x, theta=input_threshold: tf.stop_gradient(
                 ternarize_tensor_with_threshold(
                     x, theta=theta * tf.reduce_mean(tf.abs(x))
                 )
@@ -85,11 +194,13 @@ def get_model(step_config: TrainingStepConfig) -> OARModel:
 
     # QRNN_0
     cfg = get_layer_cfg("QRNN_0")
+    threshold = get_threshold("QRNN_0", cfg)
+    oar_cfg = cfg.quantization.oar
     x = QRNNWithOAR(
         cell=None,
         units=128,
         activation=TrackedActivation(
-            activation=resolve_activation(cfg.activation, cfg.omega),
+            activation=resolve_activation(cfg.activation),
             name="QRNN_0",
         ),
         batch_size=step_config.batch_size,
@@ -97,14 +208,14 @@ def get_model(step_config: TrainingStepConfig) -> OARModel:
         return_sequences=True,
         kernel_regularizer=kernel_regularizer,
         recurrent_regularizer=recurrent_regularizer,
-        kernel_quantizer=make_quantizer(cfg.quantize_threshold, "QRNN_0/quantized_kernel"),
-        recurrent_quantizer=make_quantizer(cfg.quantize_threshold, "QRNN_0/quantized_recurrent"),
+        kernel_quantizer=make_quantizer(threshold, "QRNN_0/quantized_kernel"),
+        recurrent_quantizer=make_quantizer(threshold, "QRNN_0/quantized_recurrent"),
         kernel_initializer=rnn_kernel_initializer,
         recurrent_initializer=rnn_recurrent_initializer,
-        use_oar=cfg.oar_lambda is not None,
-        oar_lambda=cfg.oar_lambda or 0.0,
-        omega=cfg.omega,
-        s=cfg.gradient_scale,
+        use_oar=oar_cfg is not None,
+        oar_lambda=oar_cfg.regularization_rate if oar_cfg else 0.0,
+        omega=oar_cfg.omega if oar_cfg else 6,
+        s=cfg.activation.gradient_scale or 1.0,
         name="QRNN_0",
     )(x)
 
@@ -112,11 +223,13 @@ def get_model(step_config: TrainingStepConfig) -> OARModel:
 
     # QRNN_1
     cfg = get_layer_cfg("QRNN_1")
+    threshold = get_threshold("QRNN_1", cfg)
+    oar_cfg = cfg.quantization.oar
     x = QRNNWithOAR(
         cell=None,
         units=128,
         activation=TrackedActivation(
-            activation=resolve_activation(cfg.activation, cfg.omega),
+            activation=resolve_activation(cfg.activation),
             name="QRNN_1",
         ),
         batch_size=step_config.batch_size,
@@ -124,14 +237,14 @@ def get_model(step_config: TrainingStepConfig) -> OARModel:
         return_sequences=True,
         kernel_regularizer=kernel_regularizer,
         recurrent_regularizer=recurrent_regularizer,
-        kernel_quantizer=make_quantizer(cfg.quantize_threshold, "QRNN_1/quantized_kernel"),
-        recurrent_quantizer=make_quantizer(cfg.quantize_threshold, "QRNN_1/quantized_recurrent"),
+        kernel_quantizer=make_quantizer(threshold, "QRNN_1/quantized_kernel"),
+        recurrent_quantizer=make_quantizer(threshold, "QRNN_1/quantized_recurrent"),
         kernel_initializer=rnn_kernel_initializer,
         recurrent_initializer=rnn_recurrent_initializer,
-        use_oar=cfg.oar_lambda is not None,
-        oar_lambda=cfg.oar_lambda or 0.0,
-        omega=cfg.omega,
-        s=cfg.gradient_scale,
+        use_oar=oar_cfg is not None,
+        oar_lambda=oar_cfg.regularization_rate if oar_cfg else 0.0,
+        omega=oar_cfg.omega if oar_cfg else 6,
+        s=cfg.activation.gradient_scale or 1.0,
         name="QRNN_1",
     )(x)
 
@@ -139,41 +252,45 @@ def get_model(step_config: TrainingStepConfig) -> OARModel:
 
     # DENSE_0
     cfg = get_layer_cfg("DENSE_0")
+    threshold = get_threshold("DENSE_0", cfg)
+    oar_cfg = cfg.quantization.oar
     x = QDenseWithOAR(
         units=1024,
         activation=TrackedActivation(
-            activation=resolve_activation(cfg.activation, cfg.omega),
+            activation=resolve_activation(cfg.activation),
             name="DENSE_0",
         ),
         batch_size=step_config.batch_size,
         use_bias=False,
         kernel_regularizer=kernel_regularizer,
-        kernel_quantizer=make_quantizer(cfg.quantize_threshold, "DENSE_0"),
+        kernel_quantizer=make_quantizer(threshold, "DENSE_0"),
         kernel_initializer=dense_kernel_initializer,
-        use_oar=cfg.oar_lambda is not None,
-        oar_lambda=cfg.oar_lambda or 0.0,
-        omega=cfg.omega,
-        s=cfg.gradient_scale,
+        use_oar=oar_cfg is not None,
+        oar_lambda=oar_cfg.regularization_rate if oar_cfg else 0.0,
+        omega=oar_cfg.omega if oar_cfg else 6,
+        s=cfg.activation.gradient_scale or 1.0,
         name="DENSE_0",
     )(x)
 
     # DENSE_OUT
     cfg = get_layer_cfg("DENSE_OUT")
+    threshold = get_threshold("DENSE_OUT", cfg)
+    oar_cfg = cfg.quantization.oar
     outputs = QDenseWithOAR(
         units=10,
         activation=TrackedActivation(
-            activation=resolve_activation(cfg.activation, cfg.omega),
+            activation=resolve_activation(cfg.activation),
             name="DENSE_OUT",
         ),
         batch_size=step_config.batch_size,
         use_bias=False,
         kernel_regularizer=kernel_regularizer,
-        kernel_quantizer=make_quantizer(cfg.quantize_threshold, "DENSE_OUT"),
+        kernel_quantizer=make_quantizer(threshold, "DENSE_OUT"),
         kernel_initializer=dense_kernel_initializer,
-        use_oar=cfg.oar_lambda is not None,
-        oar_lambda=cfg.oar_lambda or 0.0,
-        omega=cfg.omega,
-        s=cfg.gradient_scale,
+        use_oar=oar_cfg is not None,
+        oar_lambda=oar_cfg.regularization_rate if oar_cfg else 0.0,
+        omega=oar_cfg.omega if oar_cfg else 6,
+        s=cfg.activation.gradient_scale or 1.0,
         name="DENSE_OUT",
     )(x)
 

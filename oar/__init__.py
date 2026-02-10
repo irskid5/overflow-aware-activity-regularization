@@ -21,7 +21,15 @@ from oar.layers import (
     Downsampling,
 )
 from oar.training import OARModel
-from oar.config import LayerConfig, InputConfig, TrainingStepConfig, resolve_activation
+from oar.config import (
+    ActivationConfig,
+    OARConfig,
+    QuantizationConfig,
+    LayerStepConfig,
+    StepConfig,
+    ExperimentConfig,
+    DACITE_CONFIG,
+)
 __version__ = "0.1.0"
 
 __all__ = [
@@ -49,10 +57,13 @@ __all__ = [
     "QDenseWithOAR",
     "Downsampling",
     # Training
-    # Config
-    "LayerConfig",
-    "InputConfig",
-    "TrainingStepConfig",
-    "resolve_activation",
     "OARModel",
+    # Config
+    "ActivationConfig",
+    "OARConfig",
+    "QuantizationConfig",
+    "LayerStepConfig",
+    "StepConfig",
+    "ExperimentConfig",
+    "DACITE_CONFIG",
 ]

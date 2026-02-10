@@ -1,107 +1,146 @@
-"""Configuration dataclasses for OAR training."""
+"""Configuration dataclasses for OAR training.
+
+Provides a hierarchical configuration structure for experiments:
+- ActivationConfig: activation function settings
+- OARConfig: overflow-aware activity regularization settings
+- QuantizationConfig: weight/input ternarization settings
+- LayerStepConfig: per-layer configuration at one training step
+- StepConfig: configuration for one training step
+- ExperimentConfig: full experiment configuration
+
+Uses dacite for dict→dataclass conversion with DACITE_CONFIG.
+"""
 
 from dataclasses import dataclass, field
-from typing import Callable
+from typing import Literal
+
+from dacite import Config
 
 
 @dataclass
-class LayerConfig:
-    """Configuration for a single layer.
+class ActivationConfig:
+    """Activation function settings.
     
     Attributes:
-        activation: Activation function name ("tanh", "sign_ste_tanh", "mod_sign", "softmax")
-        gradient_scale: s - gradient scaling factor
-        oar_lambda: OAR regularization rate (None = disabled)
-        omega: Bit precision for OAR (k = 2^omega)
-        quantize_threshold: Ternarization threshold τ (None = no quantization)
+        function: Activation function name
+        gradient_scale: s - gradient scaling factor (for STE activations)
+        omega: Bit precision (required for mod_sign)
     """
-    activation: str = "tanh"
-    gradient_scale: float = 1.0
-    oar_lambda: float | None = None
+    function: Literal["tanh", "sign_ste_tanh", "mod_sign", "softmax"] = "tanh"
+    gradient_scale: float | None = None
+    omega: int | None = None  # Required for mod_sign
+    
+    def __post_init__(self):
+        valid = {"tanh", "sign_ste_tanh", "mod_sign", "softmax"}
+        if self.function not in valid:
+            raise ValueError(f"function must be one of {valid}")
+        if self.function == "mod_sign" and self.omega is None:
+            raise ValueError("omega required for mod_sign")
+
+
+@dataclass
+class OARConfig:
+    """OAR (overflow-aware activity regularization) settings.
+    
+    Attributes:
+        regularization_rate: λ - OAR regularization rate (0 = observe only)
+        omega: Bit precision (k = 2^omega modulus)
+    """
+    regularization_rate: float = 0.0  # 0 = observe only
     omega: int = 6
-    quantize_threshold: float | None = None
     
     def __post_init__(self):
-        valid_activations = {"tanh", "sign_ste_tanh", "mod_sign", "softmax"}
-        if self.activation not in valid_activations:
-            raise ValueError(f"activation must be one of {valid_activations}, got '{self.activation}'")
-        if self.gradient_scale <= 0:
-            raise ValueError(f"gradient_scale must be positive, got {self.gradient_scale}")
-        if self.oar_lambda is not None and self.oar_lambda < 0:
-            raise ValueError(f"oar_lambda must be non-negative, got {self.oar_lambda}")
+        if self.regularization_rate < 0:
+            raise ValueError("regularization_rate must be non-negative")
         if self.omega < 1:
-            raise ValueError(f"omega must be positive, got {self.omega}")
-        if self.quantize_threshold is not None and self.quantize_threshold < 0:
-            raise ValueError(f"quantize_threshold must be non-negative, got {self.quantize_threshold}")
+            raise ValueError("omega must be >= 1")
 
 
 @dataclass
-class InputConfig:
-    """Configuration for input ternarization.
+class QuantizationConfig:
+    """Quantization settings for a layer.
+    
+    For INPUT layer: threshold is fixed (ternarization_scale used directly as threshold)
+    For other layers: threshold = ternarization_scale × E[|θ|] (computed by model_factory)
     
     Attributes:
-        quantize_threshold: Ternarization threshold (None = no quantization)
+        ternarization_scale: t - threshold scale factor (threshold = t × E[|values|])
+        threshold: Direct threshold value (overrides ternarization_scale computation)
+        oar: OAR regularization settings (None = disabled)
     """
-    quantize_threshold: float | None = None
+    ternarization_scale: float | None = None  # t: threshold = t × E[|values|]
+    threshold: float | None = None  # Override (skip computation)
+    oar: OARConfig | None = None
     
     def __post_init__(self):
-        if self.quantize_threshold is not None and self.quantize_threshold < 0:
-            raise ValueError(f"quantize_threshold must be non-negative, got {self.quantize_threshold}")
+        if self.ternarization_scale is not None and self.ternarization_scale < 0:
+            raise ValueError("ternarization_scale must be non-negative")
+        if self.threshold is not None and self.threshold < 0:
+            raise ValueError("threshold must be non-negative")
 
 
-@dataclass 
-class TrainingStepConfig:
-    """Configuration for a single training step.
+@dataclass
+class LayerStepConfig:
+    """Configuration for one layer at one training step.
     
-    Contains all parameters needed for training: hyperparameters and per-layer config.
+    Attributes:
+        activation: Activation function configuration
+        quantization: Quantization/ternarization configuration
+    """
+    activation: ActivationConfig = field(default_factory=ActivationConfig)
+    quantization: QuantizationConfig = field(default_factory=QuantizationConfig)
+
+
+@dataclass
+class StepConfig:
+    """Configuration for one training step.
     
     Attributes:
         name: Human-readable step name (for logging)
         epochs: Training epochs
         learning_rate: Learning rate
         batch_size: Batch size
-        enlarge: Use enlarged input (128x128) vs standard (28x28)
-        layers: Per-layer configuration dict
-        input_config: Input layer configuration
+        enlarge: Use enlarged input (128x128) vs standard (28x28) for MNIST
+        layers: Per-layer configuration dict (keys are layer names like "INPUT", "QRNN_0", etc.)
     """
     name: str
-    epochs: int = 100
+    epochs: int = 1000
     learning_rate: float = 1e-4
     batch_size: int = 512
-    enlarge: bool = False
-    layers: dict[str, LayerConfig] = field(default_factory=dict)
-    input_config: InputConfig = field(default_factory=InputConfig)
+    enlarge: bool = False  # 28x28 (False) or 128x128 (True) for MNIST
+    layers: dict[str, LayerStepConfig] = field(default_factory=dict)
     
     def __post_init__(self):
         if self.epochs < 0:
-            raise ValueError(f"epochs must be non-negative, got {self.epochs}")
+            raise ValueError("epochs must be non-negative")
         if self.learning_rate <= 0:
-            raise ValueError(f"learning_rate must be positive, got {self.learning_rate}")
-        if self.batch_size < 1:
-            raise ValueError(f"batch_size must be positive, got {self.batch_size}")
+            raise ValueError("learning_rate must be positive")
 
 
-def resolve_activation(name: str, omega: int = 6) -> Callable:
-    """Resolve activation name to callable.
+@dataclass
+class ExperimentConfig:
+    """Full experiment configuration.
     
-    Args:
-        name: Activation name
-        omega: Bit precision for mod_sign
-        
-    Returns:
-        Activation function callable
+    Attributes:
+        name: Experiment name (used for run directory naming)
+        layer_names: Ordered list of layer names in the model
+        runs_dir: Base directory for experiment outputs
+        steps: Training steps indexed by step number
     """
-    import tensorflow as tf
-    from functools import partial
-    from oar import sign_ste_tanh, mod_sign
-    
-    if name == "tanh":
-        return tf.keras.activations.tanh
-    elif name == "sign_ste_tanh":
-        return sign_ste_tanh
-    elif name == "mod_sign":
-        return partial(mod_sign, num_bits=omega)
-    elif name == "softmax":
-        return tf.keras.activations.softmax
-    else:
-        raise ValueError(f"Unknown activation: {name}")
+    name: str
+    layer_names: list[str]
+    runs_dir: str = "runs/"
+    steps: dict[int, StepConfig] = field(default_factory=dict)
+
+
+# String→ActivationConfig hook for shorthand like "tanh" instead of {"function": "tanh"}
+def _activation_hook(data):
+    if isinstance(data, str):
+        return {"function": data}
+    return data
+
+
+DACITE_CONFIG = Config(
+    cast=[Literal],
+    type_hooks={ActivationConfig: _activation_hook},
+)

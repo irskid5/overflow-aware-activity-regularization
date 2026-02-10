@@ -115,6 +115,8 @@ class StepConfig:
             raise ValueError("epochs must be non-negative")
         if self.learning_rate <= 0:
             raise ValueError("learning_rate must be positive")
+        if self.batch_size < 1:
+            raise ValueError("batch_size must be >= 1")
 
 
 @dataclass
@@ -134,7 +136,7 @@ class ExperimentConfig:
 
 
 # String→ActivationConfig hook for shorthand like "tanh" instead of {"function": "tanh"}
-def _activation_hook(data):
+def _activation_hook(data: dict | str) -> dict:
     if isinstance(data, str):
         return {"function": data}
     return data

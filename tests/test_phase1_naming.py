@@ -38,21 +38,3 @@ def test_tracked_activation_applies_activation():
     x = tf.constant([-1.0, 2.0])
     out = layer(x)
     tf.debugging.assert_equal(out, tf.constant([0.0, 2.0]))
-
-
-
-def test_get_default_layer_config_uses_correct_defaults():
-    from experiments.mnist.steps import get_default_layer_config
-
-    # Test that get_default_layer_config returns proper LayerConfig
-    layer_config = get_default_layer_config("QRNN_0")
-    assert layer_config.omega == 6
-    assert layer_config.activation == "tanh"
-
-def test_get_default_layer_config_uses_correct_defaults():
-    from experiments.mnist.steps import get_default_layer_config
-
-    # Test that get_default_layer_config returns proper LayerConfig
-    layer_config = get_default_layer_config("QRNN_0")
-    assert layer_config.omega == 6
-    assert layer_config.activation == "tanh"

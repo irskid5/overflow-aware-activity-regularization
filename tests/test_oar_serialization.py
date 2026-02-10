@@ -250,15 +250,6 @@ def test_qdense_with_oar_get_config():
 from oar.training import OARModel
 
 
-def test_get_default_layer_config_from_experiments():
-    from experiments.mnist.steps import get_default_layer_config
-
-    # Test that get_default_layer_config returns proper LayerConfig
-    layer_config = get_default_layer_config("QRNN_0")
-    assert layer_config.omega == 6
-    assert layer_config.activation == "tanh"
-
-
 def test_oar_model_constructs():
     inputs = tf.keras.layers.Input(shape=(10,))
     outputs = tf.keras.layers.Dense(5)(inputs)

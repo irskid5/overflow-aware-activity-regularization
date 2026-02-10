@@ -2,6 +2,7 @@
 
 import tensorflow as tf
 from functools import partial
+from typing import Callable
 from qkeras import *
 
 from oar import (
@@ -35,7 +36,7 @@ dense_kernel_initializer = tf.keras.initializers.VarianceScaling(
 )
 
 
-def resolve_activation(config: ActivationConfig):
+def resolve_activation(config: ActivationConfig) -> Callable:
     """Resolve ActivationConfig to callable activation function.
     
     Args:
@@ -144,6 +145,9 @@ def _build_model(step_config: StepConfig, thresholds: dict[str, float]) -> OARMo
     Args:
         step_config: Training step configuration
         thresholds: Pre-computed thresholds for layers (layer_name -> threshold)
+        
+    Returns:
+        OARModel instance with configured layers
     """
     def get_layer_cfg(name: str) -> LayerStepConfig:
         """Get config for layer, using defaults if not specified."""

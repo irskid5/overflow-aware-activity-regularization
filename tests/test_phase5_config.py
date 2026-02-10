@@ -91,6 +91,10 @@ def test_step_config_zero_learning_rate():
     with pytest.raises(ValueError, match="positive"):
         StepConfig(name="test", learning_rate=0)
 
+def test_step_config_zero_batch_size():
+    with pytest.raises(ValueError, match="batch_size"):
+        StepConfig(name="test", batch_size=0)
+
 
 # === ExperimentConfig Tests ===
 

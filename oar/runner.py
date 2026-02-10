@@ -21,7 +21,7 @@ import sys
 from contextlib import contextmanager
 from dataclasses import asdict
 from datetime import datetime
-from typing import Protocol
+from typing import Protocol, TextIO
 
 import tensorflow as tf
 
@@ -308,24 +308,25 @@ def tee_output(log_path: str):
     class TeeWriter:
         """Writer that duplicates output to original stream and log file."""
 
-        def __init__(self, original, log_file):
+        def __init__(self, original: TextIO, log_file: TextIO) -> None:
             self.original = original
             self.log_file = log_file
             self.encoding = getattr(original, "encoding", "utf-8")
 
-        def write(self, data):
+        def write(self, data: str) -> int:
             self.original.write(data)
             self.log_file.write(data)
             self.log_file.flush()
+            return len(data)
 
-        def flush(self):
+        def flush(self) -> None:
             self.original.flush()
             self.log_file.flush()
 
-        def isatty(self):
+        def isatty(self) -> bool:
             return False
 
-        def fileno(self):
+        def fileno(self) -> int:
             return self.original.fileno()
 
     with open(log_path, "w") as log_file:

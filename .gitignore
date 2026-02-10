@@ -1,5 +1,6 @@
 # Project specific
 
+docs/
 .venv
 .vscode
 mnist_preprocessed/

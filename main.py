@@ -28,8 +28,15 @@ def main():
     return checkpoint
 
 
-def run_from_step_3(checkpoint_path: str):
-    """Resume from step 3."""
+def run_from_step_3(checkpoint_path: str) -> str:
+    """Resume training from step 3.
+
+    Args:
+        checkpoint_path: Path to step 2 checkpoint (.keras format).
+
+    Returns:
+        Path to final checkpoint from the completed run.
+    """
     runner = Runner(
         experiment=MNIST_EXPERIMENT,
         model_factory=get_model,

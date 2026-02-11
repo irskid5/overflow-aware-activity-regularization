@@ -99,6 +99,8 @@ class StepConfig:
         name: Human-readable step name (for logging)
         epochs: Training epochs
         learning_rate: Learning rate
+        cosine_decay_epochs: Number of epochs over which to decay LR (epoch-based, not step-based)
+        cosine_decay_alpha: Minimum LR ratio (0.0 = decay to 0, 0.1 = floor at 10% of initial)
         batch_size: Batch size
         enlarge: Use enlarged input (128x128) vs standard (28x28) for MNIST
         layers: Per-layer configuration dict (keys are layer names like "INPUT", "QRNN_0", etc.)
@@ -106,6 +108,8 @@ class StepConfig:
     name: str
     epochs: int = 1000
     learning_rate: float = 1e-4
+    cosine_decay_epochs: int = 100  # Decay LR over this many epochs (matches reference)
+    cosine_decay_alpha: float = 0.1  # LR floors at alpha * initial_lr (0.1 = 10%)
     batch_size: int = 512
     enlarge: bool = False  # 28x28 (False) or 128x128 (True) for MNIST
     layers: dict[str, LayerStepConfig] = field(default_factory=dict)
@@ -117,6 +121,10 @@ class StepConfig:
             raise ValueError("learning_rate must be positive")
         if self.batch_size < 1:
             raise ValueError("batch_size must be >= 1")
+        if not 0.0 <= self.cosine_decay_alpha <= 1.0:
+            raise ValueError("cosine_decay_alpha must be between 0.0 and 1.0")
+        if self.cosine_decay_epochs < 1:
+            raise ValueError("cosine_decay_epochs must be >= 1")
 
 
 @dataclass

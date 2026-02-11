@@ -42,7 +42,7 @@ MNIST_CONFIG = {
         },
         2: {
             "name": "sign_activation",
-            "epochs": 1000,
+            "epochs": 800,
             "layers": {
                 "QRNN_0": _QRNN_SIGN,
                 "QRNN_1": _QRNN_SIGN,
@@ -52,7 +52,7 @@ MNIST_CONFIG = {
         },
         3: {
             "name": "input_quantization",
-            "epochs": 1000,
+            "epochs": 200,
             "layers": {
                 "INPUT": _INPUT_QUANT,
                 "QRNN_0": _QRNN_SIGN,
@@ -63,8 +63,8 @@ MNIST_CONFIG = {
         },
         4: {
             "name": "full_quantization",
-            "epochs": 1000,
-            "learning_rate": 1e-5,
+            "epochs": 2000,
+            "learning_rate": 5e-6,  # Lower LR for final quantization step
             "layers": {
                 "INPUT": _INPUT_QUANT,
                 "QRNN_0": _QRNN_FULL,

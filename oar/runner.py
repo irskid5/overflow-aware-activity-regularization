@@ -156,7 +156,8 @@ class Runner:
 
                 print(f"\n{'='*60}")
                 print(f"STEP {step_num} ({i}/{total_steps}): {step_config.name}")
-                print(f"  epochs={step_config.epochs}, lr={step_config.learning_rate}")
+                print(f"  epochs={step_config.epochs}, lr={step_config.learning_rate}, "
+                      f"cosine_alpha={step_config.cosine_decay_alpha}")
                 print(f"{'='*60}\n")
 
                 pretrained_weights = self._run_step(
@@ -202,18 +203,26 @@ class Runner:
 
         reset_stat_weights(model)
 
-        # Compile with LR scheduler
-        lr_schedule = tf.keras.optimizers.schedules.CosineDecay(
-            initial_learning_rate=step_config.learning_rate,
-            decay_steps=step_config.epochs * len(ds_train),
-        )
+        # Compile with initial LR (decay handled by callback)
         model.compile(
-            optimizer=tf.keras.optimizers.Adam(learning_rate=lr_schedule),
+            optimizer=tf.keras.optimizers.Adam(learning_rate=step_config.learning_rate),
             loss=tf.keras.losses.SparseCategoricalCrossentropy(from_logits=False),
             metrics=["accuracy"],
         )
+        
+        # LR schedule decays based on epochs (not optimizer steps)
+        # This matches the reference implementation behavior
+        lr_schedule = tf.keras.optimizers.schedules.CosineDecay(
+            initial_learning_rate=step_config.learning_rate,
+            decay_steps=step_config.cosine_decay_epochs,
+            alpha=step_config.cosine_decay_alpha,
+        )
+        lr_callback = tf.keras.callbacks.LearningRateScheduler(
+            lr_schedule, verbose=0
+        )
 
         callbacks = [
+            lr_callback,
             tf.keras.callbacks.TensorBoard(
                 log_dir=os.path.join(output_dir, "logs/tensorboard")
             ),

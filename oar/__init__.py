@@ -21,6 +21,7 @@ from oar.layers import (
     Downsampling,
 )
 from oar.training import OARModel
+from oar.metrics import Perplexity
 from oar.runner import Runner, ModelFactory, DataLoader, tee_output
 from oar.config import (
     ActivationConfig,
@@ -59,6 +60,8 @@ __all__ = [
     "Downsampling",
     # Training
     "OARModel",
+    # Metrics
+    "Perplexity",
     # Runner
     "Runner",
     "ModelFactory",

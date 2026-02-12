@@ -10,6 +10,7 @@ from oar.activations import sign_ste_tanh, mod_sign, TrackedActivation
 from oar.quantizers import TernarizationWithThreshold, ternarize_tensor_with_threshold
 from oar.callbacks import (
     ReservoirHistogramCallback,
+    ResetStatesCallback,
     reset_stat_weights,
     _reservoir_update,
     RESERVOIR_UPDATE_EVERY,
@@ -50,6 +51,7 @@ __all__ = [
     "ternarize_tensor_with_threshold",
     # Callbacks
     "ReservoirHistogramCallback",
+    "ResetStatesCallback",
     "reset_stat_weights",
     "_reservoir_update",
     "RESERVOIR_UPDATE_EVERY",

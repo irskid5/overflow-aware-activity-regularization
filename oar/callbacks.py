@@ -129,3 +129,18 @@ class ReservoirHistogramCallback(tf.keras.callbacks.Callback):
                 if self.reservoir_weight_name in weight.name:
                     tf.summary.histogram(weight.name, weight, step=epoch)
             self.writer.flush()
+
+
+class ResetStatesCallback(tf.keras.callbacks.Callback):
+    """Reset RNN states at the beginning of each epoch.
+
+    Required for stateful RNNs in language modeling where hidden states
+    persist across batches but should reset between epochs.
+
+    Usage:
+        model.fit(..., callbacks=[ResetStatesCallback()])
+    """
+
+    def on_epoch_begin(self, epoch, logs=None):
+        """Reset model states at epoch start."""
+        self.model.reset_states()

@@ -62,6 +62,31 @@ def run_from_step_4(checkpoint_path: str) -> str:
     return runner.run(start_step=4, end_step=4, resume_from=checkpoint_path)
 
 
+def run_ptb_experiment():
+    """Run PTB language modeling experiment.
+    
+    Four-step quantization for stateful RNN language model:
+    1. Tanh baseline
+    2. Sign activation with gradient scaling
+    3. Input quantization (embedding output ternarization)
+    4. Full quantization + OAR
+    
+    Returns:
+        Path to final checkpoint
+    """
+    from experiments.ptb import PTB_EXPERIMENT, run_ptb
+
+    checkpoint = run_ptb(PTB_EXPERIMENT, start_step=1, end_step=4)
+    print(f"\nPTB training complete. Final checkpoint: {checkpoint}")
+    return checkpoint
+
+
 if __name__ == "__main__":
-    main()
+    import sys
+
+    if len(sys.argv) > 1 and sys.argv[1] == "ptb":
+        run_ptb_experiment()
+    else:
+        # Default: run MNIST
+        main()
     print("End!")

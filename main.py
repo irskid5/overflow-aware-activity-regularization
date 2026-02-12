@@ -45,6 +45,23 @@ def run_from_step_3(checkpoint_path: str) -> str:
     return runner.run(start_step=3, resume_from=checkpoint_path)
 
 
+def run_from_step_4(checkpoint_path: str) -> str:
+    """Resume training from step 4 (full quantization).
+
+    Args:
+        checkpoint_path: Path to step 3 checkpoint (e.g. runs/mnist/<run_id>/step_3/checkpoints/).
+
+    Returns:
+        Path to final checkpoint from the completed run.
+    """
+    runner = Runner(
+        experiment=MNIST_EXPERIMENT,
+        model_factory=get_model,
+        data_loader=get_datasets,
+    )
+    return runner.run(start_step=4, end_step=4, resume_from=checkpoint_path)
+
+
 if __name__ == "__main__":
     main()
     print("End!")

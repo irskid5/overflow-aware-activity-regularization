@@ -83,3 +83,14 @@ def test_perplexity_reset_state():
     # After reset, total_loss and count should be 0
     assert metric.total_loss.numpy() == 0.0
     assert metric.count.numpy() == 0.0
+
+
+def test_perplexity_fresh_metric_returns_finite():
+    """Fresh metric returns a finite value, not nan/inf."""
+    from oar.metrics import Perplexity
+
+    metric = Perplexity()
+    result = metric.result().numpy()
+    
+    # Should not be nan or inf
+    assert np.isfinite(result)

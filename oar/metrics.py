@@ -3,6 +3,7 @@
 import tensorflow as tf
 
 
+@tf.keras.utils.register_keras_serializable(package="OAR")
 class Perplexity(tf.keras.metrics.Metric):
     """Perplexity metric for language modeling.
 
@@ -32,7 +33,12 @@ class Perplexity(tf.keras.metrics.Metric):
 
     def result(self):
         """Return perplexity = exp(average loss)."""
-        return tf.exp(self.total_loss / self.count)
+        return tf.exp(self.total_loss / tf.maximum(self.count, 1e-7))
+
+    def get_config(self):
+        """Return config for serialization."""
+        config = super().get_config()
+        return config
 
     def reset_state(self):
         """Reset accumulated loss and count."""

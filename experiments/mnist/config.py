@@ -12,6 +12,7 @@ _DENSE_SIGN = {"activation": "sign_ste_tanh"}
 _DENSE_OUT = {"activation": "softmax"}
 _INPUT_QUANT = {"quantization": {"ternarization_scale": 0.7}}
 
+# omega=6 (k=64) to match step 3 checkpoint, with 500-epoch decay
 _QRNN_FULL = {
     "activation": {"function": "mod_sign", "gradient_scale": 4.0, "omega": 6},
     "quantization": {"ternarization_scale": 1.5, "oar": {"regularization_rate": 1e-4, "omega": 6}},
@@ -64,7 +65,8 @@ MNIST_CONFIG = {
         4: {
             "name": "full_quantization",
             "epochs": 2000,
-            "learning_rate": 5e-6,  # Lower LR for final quantization step
+            "learning_rate": 1e-4,  # Higher LR with 500-epoch decay
+            "cosine_decay_epochs": 500,  # Longer decay schedule
             "layers": {
                 "INPUT": _INPUT_QUANT,
                 "QRNN_0": _QRNN_FULL,

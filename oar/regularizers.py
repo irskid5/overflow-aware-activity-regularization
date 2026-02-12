@@ -24,6 +24,30 @@ def oar_penalty_fn(x, k, a):
     return a * tf.nn.relu(out)
 
 
+@tf.keras.utils.register_keras_serializable(package="OAR")
+def oar_penalty_fn_symmetric(x, k, a):
+    """
+    Symmetric OAR penalty (ACTUAL tf_speaker_rec no_acc_reg_hat_fn - used in paper).
+    
+    This is the function that achieved 92% accuracy in the paper.
+    Peak = 1.0 (same as paper function), but symmetric around x=0.
+    Safe zone: [-k/2+0.5, k/2-0.5] vs paper's [-k/2+0.5, k/2-0.5] shifted by 0.5.
+    
+    Args:
+        x: Input tensor (pre-activations)
+        k: Modulus size (2^omega)
+        a: Amplitude scaling factor
+    
+    Returns:
+        Penalty tensor (same shape as x)
+    """
+    t_x = 1/k * (tf.abs(x) - (3/4*k - 1/2))
+    mod = tf.math.mod(t_x, 1)
+    abs_val = tf.abs(2*mod - 1)
+    out = 2*abs_val - 1
+    return a * tf.nn.relu(out)
+
+
 def compute_oar_metric(x, k, a):
     """
     Compute fraction of pre-activations in valid modular range.

@@ -11,8 +11,8 @@ from oar.config import DACITE_CONFIG, ExperimentConfig
 
 # PTB-specific constants
 BATCH_SIZE = 20  # Standard for PTB (Zaremba et al.)
-NUM_STEPS = 35  # Sequence length (standard)
-EMBED_DIM = 128  # Embedding dimension
+NUM_STEPS = 25  # Sequence length (matching SHE paper)
+EMBED_DIM = 650  # Hidden dimension (SHE uses 1300 with 1 layer; we use 2 layers)
 
 PTB_CONFIG = {
     "name": "ptb_four_step",

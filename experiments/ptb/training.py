@@ -110,7 +110,7 @@ class PTBRunner(Runner):
         model.compile(
             optimizer=tf.keras.optimizers.Adam(learning_rate=step_config.learning_rate),
             loss=tf.keras.losses.SparseCategoricalCrossentropy(from_logits=False),
-            metrics=["accuracy"],
+            metrics=["accuracy", Perplexity()],
         )
         
         # LR schedule decays based on epochs (not optimizer steps)

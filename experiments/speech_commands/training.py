@@ -4,7 +4,6 @@ Adapts the oar.runner.Runner for Speech Commands experiment.
 """
 from typing import Callable
 
-import tensorflow as tf
 
 from experiments.speech_commands.config import SPEECH_COMMANDS_EXPERIMENT
 from experiments.speech_commands.data import get_datasets

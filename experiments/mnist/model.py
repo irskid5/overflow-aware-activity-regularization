@@ -12,6 +12,7 @@ from oar import (
     TernarizationWithThreshold,
     ternarize_tensor_with_threshold,
     resolve_activation,
+    compute_thresholds_if_needed,
 )
 from oar.config import StepConfig, LayerStepConfig
 
@@ -56,7 +57,9 @@ def get_model(
     # Check if we need to compute thresholds
     thresholds = {}
     if pretrained_weights:
-        thresholds = _compute_thresholds_if_needed(step_config, pretrained_weights)
+        thresholds = compute_thresholds_if_needed(
+            step_config, pretrained_weights, _build_model
+        )
     
     # Build model with thresholds
     model = _build_model(step_config, thresholds)
@@ -67,47 +70,6 @@ def get_model(
         print(f"Restored pretrained weights from {pretrained_weights}.")
     
     return model
-
-
-def _compute_thresholds_if_needed(
-    step_config: StepConfig,
-    checkpoint_path: str,
-) -> dict[str, float]:
-    """Compute thresholds: τ = ternarization_scale × E[|θ|].
-    
-    Only computes for layers that have ternarization_scale set but no explicit threshold.
-    Skips INPUT layer (its threshold is used directly, not computed from weights).
-    """
-    # First check if any layer needs computed thresholds
-    layers_needing_thresholds = []
-    for name, cfg in step_config.layers.items():
-        q = cfg.quantization
-        if q.ternarization_scale is not None and q.threshold is None and name != "INPUT":
-            layers_needing_thresholds.append(name)
-    
-    if not layers_needing_thresholds:
-        return {}
-    
-    # Build temp model and load weights
-    temp_model = _build_model(step_config, thresholds={})
-    temp_model.load_weights(checkpoint_path)
-    
-    # Compute thresholds
-    thresholds = {}
-    for layer_name in layers_needing_thresholds:
-        t = step_config.layers[layer_name].quantization.ternarization_scale
-        
-        for layer in temp_model.layers:
-            if layer_name in layer.name and layer.trainable_weights:
-                all_weights = tf.concat(
-                    [tf.reshape(w, [-1]) for w in layer.trainable_weights], axis=-1
-                )
-                mean_abs = float(tf.reduce_mean(tf.abs(all_weights)).numpy())
-                thresholds[layer_name] = t * mean_abs
-                break
-    
-    print(f"Computed thresholds: {thresholds}")
-    return thresholds
 
 
 def _get_default_layer_config() -> LayerStepConfig:

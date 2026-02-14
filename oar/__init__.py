@@ -33,6 +33,8 @@ from oar.config import (
     ExperimentConfig,
     DACITE_CONFIG,
 )
+from oar.model_utils import compute_thresholds_if_needed
+
 __version__ = "0.1.0"
 
 __all__ = [
@@ -78,4 +80,6 @@ __all__ = [
     "StepConfig",
     "ExperimentConfig",
     "DACITE_CONFIG",
+    # Model utils
+    "compute_thresholds_if_needed",
 ]

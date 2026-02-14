@@ -1,8 +1,6 @@
 """MNIST RNN model architecture with OAR support."""
 
 import tensorflow as tf
-from functools import partial
-from typing import Callable
 from qkeras import *
 
 from oar import (
@@ -13,10 +11,9 @@ from oar import (
     TrackedActivation,
     TernarizationWithThreshold,
     ternarize_tensor_with_threshold,
-    sign_ste_tanh,
-    mod_sign,
+    resolve_activation,
 )
-from oar.config import StepConfig, LayerStepConfig, ActivationConfig
+from oar.config import StepConfig, LayerStepConfig
 
 SEED = 1997
 
@@ -34,27 +31,6 @@ rnn_recurrent_initializer = tf.keras.initializers.Orthogonal(gain=1.0, seed=SEED
 dense_kernel_initializer = tf.keras.initializers.VarianceScaling(
     scale=2.0, mode="fan_in", distribution="truncated_normal", seed=SEED
 )
-
-
-def resolve_activation(config: ActivationConfig) -> Callable:
-    """Resolve ActivationConfig to callable activation function.
-    
-    Args:
-        config: Activation configuration
-        
-    Returns:
-        Activation function callable
-    """
-    if config.function == "tanh":
-        return tf.keras.activations.tanh
-    elif config.function == "sign_ste_tanh":
-        return sign_ste_tanh
-    elif config.function == "mod_sign":
-        return partial(mod_sign, num_bits=config.omega)
-    elif config.function == "softmax":
-        return tf.keras.activations.softmax
-    else:
-        raise ValueError(f"Unknown activation: {config.function}")
 
 
 def get_model(

@@ -1,6 +1,11 @@
 """OAR activation functions and wrappers."""
 
+from functools import partial
+from typing import Callable
+
 import tensorflow as tf
+
+from oar.config import ActivationConfig
 
 
 def sign_ste_tanh(x):
@@ -59,6 +64,30 @@ def mod_sign(x, num_bits=8):
     )
 
     return out
+
+
+def resolve_activation(config: ActivationConfig) -> Callable:
+    """Resolve ActivationConfig to callable activation function.
+    
+    Args:
+        config: Activation configuration with function name and optional params
+        
+    Returns:
+        Activation function callable
+        
+    Raises:
+        ValueError: If function name is not recognized
+    """
+    if config.function == "tanh":
+        return tf.keras.activations.tanh
+    elif config.function == "sign_ste_tanh":
+        return sign_ste_tanh
+    elif config.function == "mod_sign":
+        return partial(mod_sign, num_bits=config.omega)
+    elif config.function == "softmax":
+        return tf.keras.activations.softmax
+    else:
+        raise ValueError(f"Unknown activation: {config.function}")
 
 
 @tf.keras.utils.register_keras_serializable(package="OAR")

@@ -6,7 +6,7 @@ with overflow-aware regularization for TFHE inference.
 """
 
 from oar.regularizers import OAR1, OAR2, OARRegularizer, oar_penalty_fn, compute_oar_metric
-from oar.activations import sign_ste_tanh, mod_sign, TrackedActivation
+from oar.activations import sign_ste_tanh, mod_sign, TrackedActivation, resolve_activation
 from oar.quantizers import TernarizationWithThreshold, ternarize_tensor_with_threshold
 from oar.callbacks import (
     ReservoirHistogramCallback,
@@ -46,6 +46,7 @@ __all__ = [
     "sign_ste_tanh",
     "mod_sign",
     "TrackedActivation",
+    "resolve_activation",
     # Quantizers
     "TernarizationWithThreshold",
     "ternarize_tensor_with_threshold",

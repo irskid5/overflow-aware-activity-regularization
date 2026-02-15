@@ -33,7 +33,7 @@ SPEECH_COMMANDS_CONFIG = {
         1: {
             "name": "tanh_baseline",
             "epochs": 50,
-            "batch_size": 64,
+            "batch_size": 512,
             "layers": {
                 "QRNN_0": {"activation": "tanh"},
                 "QRNN_1": {"activation": "tanh"},
@@ -44,7 +44,7 @@ SPEECH_COMMANDS_CONFIG = {
         2: {
             "name": "sign_activation",
             "epochs": 100,
-            "batch_size": 64,
+            "batch_size": 512,
             "layers": {
                 "QRNN_0": _QRNN_SIGN,
                 "QRNN_1": _QRNN_SIGN,
@@ -55,7 +55,7 @@ SPEECH_COMMANDS_CONFIG = {
         3: {
             "name": "input_quantization",
             "epochs": 50,
-            "batch_size": 64,
+            "batch_size": 512,
             "layers": {
                 "INPUT": _INPUT_QUANT,
                 "QRNN_0": _QRNN_SIGN,
@@ -67,7 +67,7 @@ SPEECH_COMMANDS_CONFIG = {
         4: {
             "name": "full_quantization",
             "epochs": 200,
-            "batch_size": 64,
+            "batch_size": 512,
             "learning_rate": 1e-4,
             "cosine_decay_epochs": 100,
             "layers": {

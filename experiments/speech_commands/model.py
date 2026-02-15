@@ -134,6 +134,7 @@ def _build_model(step_config: StepConfig, thresholds: dict[str, float]) -> OARMo
         batch_size=step_config.batch_size,
         use_bias=False,
         return_sequences=True,
+        unroll=True,  # Unroll for GPU parallelization
         kernel_quantizer=make_quantizer(threshold, "QRNN_0/quantized_kernel"),
         recurrent_quantizer=make_quantizer(threshold, "QRNN_0/quantized_recurrent"),
         kernel_initializer=rnn_kernel_initializer,
@@ -163,6 +164,7 @@ def _build_model(step_config: StepConfig, thresholds: dict[str, float]) -> OARMo
         batch_size=step_config.batch_size,
         use_bias=False,
         return_sequences=True,
+        unroll=True,  # Unroll for GPU parallelization
         kernel_quantizer=make_quantizer(threshold, "QRNN_1/quantized_kernel"),
         recurrent_quantizer=make_quantizer(threshold, "QRNN_1/quantized_recurrent"),
         kernel_initializer=rnn_kernel_initializer,

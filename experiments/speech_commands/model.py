@@ -18,9 +18,12 @@ from oar import (
     resolve_activation,
     compute_thresholds_if_needed,
 )
-from oar.config import StepConfig, LayerStepConfig
+from oar.config import StepConfig, LayerStepConfig, OARConfig
 
 SEED = 1997
+
+# Default OAR config (used when OAR is disabled)
+_DEFAULT_OAR = OARConfig()
 
 # Hidden dimensions (similar to MNIST)
 RNN_UNITS = 128
@@ -120,7 +123,7 @@ def _build_model(step_config: StepConfig, thresholds: dict[str, float]) -> OARMo
     # QRNN_0
     cfg = get_layer_cfg("QRNN_0")
     threshold = get_threshold("QRNN_0", cfg)
-    oar_cfg = cfg.quantization.oar
+    oar = cfg.quantization.oar or _DEFAULT_OAR
     x = QRNNWithOAR(
         cell=None,
         units=RNN_UNITS,
@@ -137,9 +140,9 @@ def _build_model(step_config: StepConfig, thresholds: dict[str, float]) -> OARMo
         recurrent_initializer=rnn_recurrent_initializer,
         kernel_regularizer=kernel_regularizer,
         recurrent_regularizer=recurrent_regularizer,
-        use_oar=oar_cfg is not None,
-        oar_lambda=oar_cfg.regularization_rate if oar_cfg else 0.0,
-        omega=oar_cfg.omega if oar_cfg else 6,
+        use_oar=cfg.quantization.oar is not None,
+        oar_lambda=oar.regularization_rate,
+        omega=oar.omega,
         s=cfg.activation.gradient_scale or 1.0,
         name="QRNN_0",
     )(x)
@@ -149,7 +152,7 @@ def _build_model(step_config: StepConfig, thresholds: dict[str, float]) -> OARMo
     # QRNN_1
     cfg = get_layer_cfg("QRNN_1")
     threshold = get_threshold("QRNN_1", cfg)
-    oar_cfg = cfg.quantization.oar
+    oar = cfg.quantization.oar or _DEFAULT_OAR
     x = QRNNWithOAR(
         cell=None,
         units=RNN_UNITS,
@@ -166,9 +169,9 @@ def _build_model(step_config: StepConfig, thresholds: dict[str, float]) -> OARMo
         recurrent_initializer=rnn_recurrent_initializer,
         kernel_regularizer=kernel_regularizer,
         recurrent_regularizer=recurrent_regularizer,
-        use_oar=oar_cfg is not None,
-        oar_lambda=oar_cfg.regularization_rate if oar_cfg else 0.0,
-        omega=oar_cfg.omega if oar_cfg else 6,
+        use_oar=cfg.quantization.oar is not None,
+        oar_lambda=oar.regularization_rate,
+        omega=oar.omega,
         s=cfg.activation.gradient_scale or 1.0,
         name="QRNN_1",
     )(x)
@@ -178,7 +181,7 @@ def _build_model(step_config: StepConfig, thresholds: dict[str, float]) -> OARMo
     # DENSE_0
     cfg = get_layer_cfg("DENSE_0")
     threshold = get_threshold("DENSE_0", cfg)
-    oar_cfg = cfg.quantization.oar
+    oar = cfg.quantization.oar or _DEFAULT_OAR
     x = QDenseWithOAR(
         units=DENSE_UNITS,
         activation=TrackedActivation(
@@ -190,9 +193,9 @@ def _build_model(step_config: StepConfig, thresholds: dict[str, float]) -> OARMo
         kernel_quantizer=make_quantizer(threshold, "DENSE_0"),
         kernel_initializer=dense_kernel_initializer,
         kernel_regularizer=kernel_regularizer,
-        use_oar=oar_cfg is not None,
-        oar_lambda=oar_cfg.regularization_rate if oar_cfg else 0.0,
-        omega=oar_cfg.omega if oar_cfg else 6,
+        use_oar=cfg.quantization.oar is not None,
+        oar_lambda=oar.regularization_rate,
+        omega=oar.omega,
         s=cfg.activation.gradient_scale or 1.0,
         name="DENSE_0",
     )(x)
@@ -200,7 +203,7 @@ def _build_model(step_config: StepConfig, thresholds: dict[str, float]) -> OARMo
     # DENSE_OUT
     cfg = get_layer_cfg("DENSE_OUT")
     threshold = get_threshold("DENSE_OUT", cfg)
-    oar_cfg = cfg.quantization.oar
+    oar = cfg.quantization.oar or _DEFAULT_OAR
     outputs = QDenseWithOAR(
         units=NUM_CLASSES,
         activation=TrackedActivation(
@@ -212,9 +215,9 @@ def _build_model(step_config: StepConfig, thresholds: dict[str, float]) -> OARMo
         kernel_quantizer=make_quantizer(threshold, "DENSE_OUT"),
         kernel_initializer=dense_kernel_initializer,
         kernel_regularizer=kernel_regularizer,
-        use_oar=oar_cfg is not None,
-        oar_lambda=oar_cfg.regularization_rate if oar_cfg else 0.0,
-        omega=oar_cfg.omega if oar_cfg else 6,
+        use_oar=cfg.quantization.oar is not None,
+        oar_lambda=oar.regularization_rate,
+        omega=oar.omega,
         s=cfg.activation.gradient_scale or 1.0,
         name="DENSE_OUT",
     )(x)
